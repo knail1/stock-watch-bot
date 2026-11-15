@@ -1,0 +1,30 @@
+{
+  "data": {
+    "product": {
+      "__typename": "Product",
+      "tcin": "94693225",
+      "fulfillment": {
+        "product_id": "94693225",
+        "is_out_of_stock_in_all_store_locations": true,
+        "is_out_of_stock_in_all_online_locations": true,
+        "shipping_options": {
+          "availability_status": "OUT_OF_STOCK",
+          "loyalty_availability_status": "OUT_OF_STOCK",
+          "available_to_promise_quantity": 0.0,
+          "reason_code": "INVENTORY_UNAVAILABLE"
+        },
+        "store_options": [
+          {
+            "location_id": "1923",
+            "location_name": "Frisco",
+            "location_address": "3351 Preston Rd, Frisco, TX 75034-9006",
+            "location_available_to_promise_quantity": 0.0,
+            "search_response_store_type": "PRIMARY",
+            "order_pickup": {"availability_status": "UNAVAILABLE"},
+            "in_store_only": {"availability_status": "OUT_OF_STOCK"}
+          }
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{% macro dot(color) -%}
+<span class="dot {{ color }}" title="{{ {'green': 'checking', 'yellow': 'blocked', 'red': 'error', 'grey': 'paused'}[color] }}"></span>
+{%- endmacro %}
+{% macro status_word(color) -%}
+{{ {'green': 'Checking', 'yellow': 'Blocked', 'red': 'Error', 'grey': 'Paused'}[color] }}
+{%- endmacro %}
+{% macro op(w, action, label, next="", cls="") -%}
+<form method="post" action="/watches/{{ w.id }}/{{ action }}" class="inline"{% if action == 'delete' %} data-confirm="Delete watch {{ w.name }}?"{% endif %}>
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+  <button type="submit" class="{{ cls }}">{{ label }}</button>
+</form>
+{%- endmacro %}

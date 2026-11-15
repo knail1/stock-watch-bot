@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Settings · StockWatch{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+{% for e in errors %}<p class="flash err">{{ e }}</p>{% endfor %}
+{% if outcomes is not none %}
+<div class="card">
+  <h2>Test results</h2>
+  <ul class="list">
+  {% for o in outcomes %}
+    <li><span class="dot {{ 'green' if o.ok else 'red' }}"></span> <strong>{{ notify_labels.get(o.channel, o.channel) }}</strong> {{ "sent" if o.ok else "failed" }}
+      {% if o.detail and not o.ok %}<span class="muted">{{ o.detail }}</span>{% endif %}</li>
+  {% else %}<li class="muted">No channels enabled.</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<section class="card">
+  <h2>Notifications</h2>
+  <ul class="list">
+  {% for c in s.channels %}
+    <li class="row">
+      <span class="dot {{ 'green' if c.enabled and c.configured else ('red' if c.enabled else 'grey') }}"></span>
+      <strong>{{ notify_labels.get(c.name, c.name) }}</strong>
+      <span class="muted">{{ "on" if c.enabled else "off" }}{% if c.enabled and not c.configured %}, secrets missing{% endif %}</span>
+      <form method="post" action="/settings/test" class="inline push">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="channel" value="{{ c.name }}">
+        <button type="submit" {{ 'disabled' if not c.enabled }}>Send test</button>
+      </form>
+    </li>
+  {% endfor %}
+  </ul>
+  <form method="post" action="/settings/test">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="channel" value="">
+    <button type="submit" class="primary">Test all channels</button>
+  </form>
+</section>
+
+<form method="post" action="/settings" class="card">
+  <h2>Location and quiet hours</h2>
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="grid2">
+    <label>Home ZIP
+      <input type="text" name="home_zip" inputmode="numeric" pattern="[0-9]{5}" value="{{ s.home_zip }}" required>
+    </label>
+    <label>Radius (mi)
+      <input type="text" name="radius_miles" inputmode="decimal" value="{{ '%g'|format(s.radius_miles) }}" required>
+    </label>
+  </div>
+  <label>Quiet hours <span class="muted">(e.g. 23:00-06:00; critical alerts still ring)</span>
+    <input type="text" name="quiet_hours" value="{{ s.quiet_hours or '' }}" placeholder="none">
+  </label>
+  <button type="submit" class="primary">Save</button>
+</form>
+
+<section class="card">
+  <h2>Retailer sign-in</h2>
+  <ul class="list">
+  {% for r, ok in signin.items() %}
+    <li><span class="dot {{ 'green' if ok else ('red' if ok is sameas false else 'grey') }}"></span>
+      <strong>{{ retailer_labels.get(r, r) }}</strong>
+      <span class="muted">{{ "signed in" if ok else ("signed out" if ok is sameas false else "unknown") }}</span></li>
+  {% endfor %}
+  </ul>
+  <form method="post" action="/settings/signin">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit">Open sign-in browser on the Mac</button>
+  </form>
+  <p class="muted">Sign in manually (including 2FA) in the Chrome window that opens. The bot never stores passwords.</p>
+</section>
+{% endblock %}

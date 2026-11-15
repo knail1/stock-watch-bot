@@ -1,0 +1,11 @@
+{
+  "data": {
+    "product": {
+      "tcin": "94693225",
+      "fulfillment": {
+        "shipping_options": {"availability_status": "TEMPORARILY_ELSEWHERE"},
+        "store_options": []
+      }
+    }
+  }
+}

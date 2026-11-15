@@ -1,0 +1,20 @@
+{
+  "data": {
+    "product": {
+      "tcin": "94693225",
+      "price": {"current_retail": 449.99, "formatted_current_price": "$449.99"},
+      "fulfillment": {
+        "shipping_options": {"availability_status": "LIMITED_STOCK", "available_to_promise_quantity": 3.0},
+        "store_options": [
+          {
+            "location_id": "1923",
+            "location_name": "Frisco",
+            "location_available_to_promise_quantity": 0.0,
+            "order_pickup": {"availability_status": "NOT_SOLD_IN_STORE"},
+            "in_store_only": {"availability_status": "NOT_SOLD_IN_STORE"}
+          }
+        ]
+      }
+    }
+  }
+}

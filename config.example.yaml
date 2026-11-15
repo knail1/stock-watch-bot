@@ -1,0 +1,101 @@
+# StockWatch configuration (spec section 5). Copied to ~/StockWatch/config.yaml by
+# `stockwatch init` / scripts/install.sh. This file is the source of truth; dashboard
+# edits are written back to it.
+#
+# Secrets are never written here: ${VAR} is resolved from the environment, then
+# ~/StockWatch/.env (chmod 600), then the macOS Keychain (service "stockwatch", account VAR).
+#
+# Lines marked "FILL IN" are open decisions (spec section 14) or placeholders.
+
+home:
+  zip: "00000"            # FILL IN (open decision 1): your 5-digit ZIP code
+  radius_miles: 25        # FILL IN (open decision 1): stores farther than this are ignored
+
+defaults:
+  interval_seconds: 90    # per watch, before +/-20% jitter; never below the retailer minimum
+  # Open decision 4: quiet hours only soften NON-critical alerts (Pushover without sound,
+  # no Mac sound). Critical in-stock alerts are never suppressed. Default: no quiet hours.
+  quiet_hours: null       # e.g. "23:00-06:00"
+  max_price: null         # above this price an in-stock alert is info, not critical
+
+notify:
+  status_notices: true   # false: keep "<Retailer> paused" / "checks recovered" notices off the phone (dashboard only)
+  pushover:
+    enabled: true
+    user_key: ${PUSHOVER_USER_KEY}
+    app_token: ${PUSHOVER_APP_TOKEN}
+    priority: 2           # emergency: repeats until acknowledged (enable Critical Alerts in the app)
+    retry_seconds: 30     # Pushover minimum is 30
+    expire_seconds: 900
+    sound: "siren"
+  telegram:
+    enabled: true
+    bot_token: ${TELEGRAM_BOT_TOKEN}
+    chat_id: ${TELEGRAM_CHAT_ID}   # only this chat may send commands
+  mac_sound:
+    enabled: true
+    file: "assets/alarm.aiff"      # relative to the repo, then ~/StockWatch; falls back to Sosumi
+    repeat: 3
+    speak: true                    # macOS `say` reads the store name and price
+
+retailers:
+  bestbuy:
+    api_key: ${BESTBUY_API_KEY}    # free key from https://developer.bestbuy.com
+    # Best Buy API ToS: 50,000 calls/day and 5/s per key; content kept at most 72h; no
+    # game/music/movie titles. See docs/policies/bestbuy-compliance.md. Each check = 2 calls.
+    daily_call_budget: 45000       # rolling 24h cap enforced locally (max 50000)
+    # min_interval_seconds: 60     # can only be raised above the built-in floor
+  target:
+    # source: page (default) reads the product page in the bot's Chrome profile. Target's JSON
+    # API ("api") is behind PerimeterX bot protection and returns HTTP 435 to scripts.
+    # The public web key Target's own site uses is built in; override if it rotates.
+    # api_key: "..."
+    max_stores: 3                  # fulfillment requests per check (nearest stores in radius)
+  walmart:
+    min_interval_seconds: 180      # Walmart is the most aggressive at bot detection
+  gamestop: {}
+  nintendo:
+    # Open decision 5: Nintendo only sells online. Its stock pages you as critical by
+    # default; set to "info" for a normal-priority notice instead.
+    online_severity: critical
+
+dashboard:
+  port: 8787
+  bind: ["127.0.0.1", "tailscale"]   # never 0.0.0.0; "tailscale" = `tailscale ip -4`
+  pin: ${DASHBOARD_PIN}              # required for anything but 127.0.0.1
+
+health:
+  heartbeat_url: ${HEARTBEAT_URL}    # e.g. https://hc-ping.com/<uuid> from healthchecks.io
+  heartbeat_interval_seconds: 300
+  daily_summary_time: "09:00"        # Telegram summary, local time
+  failure_warn_threshold: 5          # warn once after this many failed checks in a row
+  prevent_sleep: true                # hold `caffeinate -i` while running
+
+browser:
+  headless: false        # a visible window is easiest to debug; true runs it hidden
+  channel: chrome        # the real Google Chrome; no bundled browser, no spoofing
+  cart_timeout_seconds: 25
+
+watches:
+  - id: switch2-local
+    name: "Nintendo Switch 2"       # FILL IN (open decision 2): exact item / bundle
+    enabled: false                  # FILL IN the identifiers below, then set to true
+    max_price: 499.99               # FILL IN (open decision 3)
+    fulfillment: [store_pickup, in_store, ship]   # in priority order
+    add_to_cart: true
+    # Online-only (ship-only) stock: spec 7 makes it an info alert when a local option is
+    # listed ahead of "ship" above. Uncomment to override for this watch. Nintendo (online
+    # only, open decision 5) defaults to critical; change it with retailers.nintendo.online_severity.
+    # online_only_severity: critical
+    targets:
+      - retailer: bestbuy
+        sku: "BESTBUY_SKU"            # FILL IN: from the product URL (?skuId=... or /<sku>.p)
+        # store_ids: ["1234"]         # optional: pin specific stores instead of ZIP + radius
+      - retailer: target
+        tcin: "TARGET_TCIN"           # FILL IN: from the product URL (/A-<tcin>)
+      - retailer: walmart
+        item_id: "WALMART_ITEM_ID"    # FILL IN: from the product URL (/ip/<slug>/<item_id>)
+      - retailer: gamestop
+        url: "https://www.gamestop.com/FILL_IN_PRODUCT_URL.html"
+      - retailer: nintendo
+        url: "https://www.nintendo.com/us/store/products/FILL_IN_PRODUCT_SLUG/"

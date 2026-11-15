@@ -1,0 +1,19 @@
+{
+  "product": {
+    "sku": 6614313,
+    "name": "Nintendo Switch 2 System",
+    "salePrice": 449.99,
+    "onlineAvailability": true,
+    "inStoreAvailability": true,
+    "orderable": "Available",
+    "url": "https://api.bestbuy.com/click/-/6614313/pdp"
+  },
+  "stores": {
+    "ispuEligible": true,
+    "stores": [
+      {"storeID": "1031", "name": "Frisco", "address": "3333 Preston Rd", "city": "Frisco", "state": "TX", "postalCode": "75034", "distance": 6.2, "lowStock": true},
+      {"storeID": "281", "name": "Plano", "address": "2601 Preston Rd", "city": "Plano", "state": "TX", "postalCode": "75093", "distance": 11.85, "lowStock": false},
+      {"storeID": "1498", "name": "Denton", "address": "2700 S Loop 288", "city": "Denton", "state": "TX", "postalCode": "76205", "distance": 31.4, "lowStock": false}
+    ]
+  }
+}

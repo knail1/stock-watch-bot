@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "_status.html" import dot, status_word, op with context %}
+{% block content %}
+<div class="summary" data-autorefresh="30">
+  {% for c in ("green", "yellow", "red", "grey") %}{% if counts[c] %}<span>{{ dot(c) }} {{ counts[c] }} {{ status_word(c)|lower }}</span>{% endif %}{% endfor %}
+</div>
+{% if not watches %}
+<div class="card"><p>No watches yet.</p><a class="button primary" href="/watches/new">Add a watch</a></div>
+{% endif %}
+{% for w in watches %}
+<article class="card watch">
+  <a class="row head" href="/watches/{{ w.id }}">
+    {{ dot(w.status) }}<strong>{{ w.name }}</strong><span class="muted">{{ status_word(w.status) }}</span>
+  </a>
+  <dl class="facts">
+    <dt>Last check</dt><dd>{{ w.last_check_at|ago }}</dd>
+    <dt>Last in stock</dt><dd>{{ w.last_in_stock_at|dt }}</dd>
+  </dl>
+  <ul class="targets">
+    {% for t in w.targets %}
+    <li>{{ dot(t.status) }} {{ t.label }}
+      <span class="muted">{% if t.error %}{{ t.error }}{% elif t.last_in_stock %}in stock {{ t.last_price|price }}{% elif t.last_result %}{{ t.last_result|lower }}{% endif %}</span></li>
+    {% endfor %}
+  </ul>
+  <div class="actions">
+    {% if w.enabled %}{{ op(w, "pause", "Pause", "/") }}{% else %}{{ op(w, "resume", "Resume", "/", "primary") }}{% endif %}
+    {{ op(w, "check", "Check now", "/") }}
+  </div>
+</article>
+{% endfor %}
+{% endblock %}

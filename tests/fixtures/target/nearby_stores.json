@@ -1,0 +1,12 @@
+{
+  "data": {
+    "nearby_stores": {
+      "count": 3,
+      "stores": [
+        {"store_id": "1923", "location_name": "Frisco", "distance": 2.41, "mailing_address": {"city": "Frisco", "region": "TX", "postal_code": "75034"}},
+        {"store_id": "2088", "location_name": "Plano North", "distance": 6.2, "mailing_address": {"city": "Plano", "region": "TX", "postal_code": "75093"}},
+        {"store_id": "3301", "location_name": "Denton", "distance": 31.7, "mailing_address": {"city": "Denton", "region": "TX", "postal_code": "76205"}}
+      ]
+    }
+  }
+}

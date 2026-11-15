@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}{{ "Edit " ~ watch.name if watch else "Add watch" }} · StockWatch{% endblock %}
+{% block content %}
+<form method="post" action="{{ '/watches/' ~ watch.id ~ '/edit' if watch else '/watches/new' }}" class="card">
+  <h1>{{ "Edit " ~ watch.name if watch else "Add watch" }}</h1>
+  {% for e in errors %}<p class="flash err">{{ e }}</p>{% endfor %}
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label>Name
+    <input type="text" name="name" value="{{ values.name }}" maxlength="80" placeholder="e.g. Nintendo Switch 2">
+  </label>
+  {% if watch %}
+  <fieldset><legend>Targets (untick to remove)</legend>
+    {% for t in watch.targets %}
+    <label class="check"><input type="checkbox" name="keep" value="{{ loop.index0 }}" {{ 'checked' if loop.index0|string in values.keep }}> {{ t.label }}</label>
+    {% endfor %}
+  </fieldset>
+  {% endif %}
+  <label>{{ "Add product URLs" if watch else "Product URLs" }} <span class="muted">(one per line)</span>
+    <textarea name="urls" rows="4" autocapitalize="off" autocorrect="off" spellcheck="false"
+      placeholder="https://www.bestbuy.com/site/...&#10;https://www.target.com/p/.../A-12345678">{{ values.urls }}</textarea>
+  </label>
+  <fieldset><legend>Fulfillment</legend>
+    {% for c in channels %}
+    <label class="check"><input type="checkbox" name="fulfillment" value="{{ c }}" {{ 'checked' if c in values.fulfillment }}> {{ channel_labels[c] }}</label>
+    {% endfor %}
+  </fieldset>
+  <div class="grid2">
+    <label>Max price ($)
+      <input type="text" name="max_price" inputmode="decimal" value="{{ values.max_price }}" placeholder="none">
+    </label>
+    <label>Radius (mi)
+      <input type="text" name="radius_miles" inputmode="decimal" value="{{ values.radius_miles }}" placeholder="{{ '%g'|format(default_radius) }}">
+    </label>
+  </div>
+  <label>Check interval (s) <span class="muted">(retailer minimums still apply)</span>
+    <input type="text" name="interval_seconds" inputmode="numeric" value="{{ values.interval_seconds }}" placeholder="default">
+  </label>
+  <label class="check"><input type="checkbox" name="add_to_cart" value="1" {{ 'checked' if values.add_to_cart }}> Try to add to cart on restock (never checks out)</label>
+  <button type="submit" class="primary">{{ "Save" if watch else "Add watch" }}</button>
+  {% if watch %}<a class="button" href="/watches/{{ watch.id }}">Cancel</a>{% endif %}
+</form>
+{% endblock %}

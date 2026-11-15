@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Events · StockWatch{% endblock %}
+{% block content %}
+<h1>Events</h1>
+{% if not events %}<p class="muted">Nothing yet.</p>{% endif %}
+<ul class="list">
+{% for e in events %}
+  <li class="ev {{ e.kind }}">
+    <span class="tag {{ e.kind }}">{{ e.kind }}</span>
+    <span class="when">{{ e.at|dt }}{% if e.ended_at %} → {{ e.ended_at|dt }}{% endif %}</span>
+    <div><strong>{{ e.title }}</strong>
+      {% if e.watch_id %}<a class="muted" href="/watches/{{ e.watch_id }}">{{ e.watch_id }}</a>{% endif %}
+      {% if e.retailer %}<span class="muted">{{ retailer_labels.get(e.retailer, e.retailer) }}</span>{% endif %}</div>
+    {% if e.detail %}<div class="muted">{{ e.detail }}</div>{% endif %}
+    {% if e.url %}<a href="{{ e.url }}" target="_blank" rel="noopener noreferrer">open link</a>{% endif %}
+  </li>
+{% endfor %}
+</ul>
+{% endblock %}

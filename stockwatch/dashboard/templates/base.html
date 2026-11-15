@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="StockWatch">
+<meta name="theme-color" content="#111827">
+<meta name="referrer" content="no-referrer">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="/static/icon-192.png">
+<link rel="stylesheet" href="/static/style.css">
+<title>{% block title %}StockWatch{% endblock %}</title>
+<script src="/static/app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/">StockWatch</a>
+  {% if pin_configured and path != "/login" %}
+  <form method="post" action="/logout" class="inline">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="link" type="submit">Log out</button>
+  </form>
+  {% endif %}
+</header>
+{% if path != "/login" %}
+<nav class="tabs">
+  <a href="/" class="{{ 'on' if path == '/' }}">Watches</a>
+  <a href="/watches/new" class="{{ 'on' if path == '/watches/new' }}">Add</a>
+  <a href="/events" class="{{ 'on' if path == '/events' }}">Events</a>
+  <a href="/settings" class="{{ 'on' if path == '/settings' }}">Settings</a>
+</nav>
+{% endif %}
+<main>
+{% if ok %}<p class="flash ok">{{ ok }}</p>{% endif %}
+{% block content %}{% endblock %}
+</main>
+{% if show_bestbuy %}
+<footer class="attrib">
+  <span>Best Buy stock and price data is provided by the Best Buy Developer API.</span>
+  <a href="https://developer.bestbuy.com" rel="noopener noreferrer" target="_blank"><img class="bb-logo" src="https://developer.bestbuy.com/images/bestbuy-logo.png" alt="Best Buy Developer API"></a>
+</footer>
+{% endif %}
+</body>
+</html>
