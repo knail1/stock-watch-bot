@@ -152,6 +152,9 @@ class NotifyCfg:
     pushover: PushoverCfg = field(default_factory=PushoverCfg)
     telegram: TelegramCfg = field(default_factory=TelegramCfg)
     mac_sound: MacSoundCfg = field(default_factory=MacSoundCfg)
+    # "<Retailer> paused" / "checks recovered" notices. Off keeps them on the dashboard and in the
+    # log only; blocked-retailer state still shows there. In-stock, price and broken alerts are unaffected.
+    status_notices: bool = True
 
 
 @dataclass
@@ -316,6 +319,7 @@ def build_config(raw: dict[str, Any], resolver: SecretResolver | None = None) ->
         pushover=_sub(PushoverCfg, n.get("pushover")),
         telegram=_sub(TelegramCfg, n.get("telegram")),
         mac_sound=_sub(MacSoundCfg, n.get("mac_sound")),
+        status_notices=bool(n.get("status_notices", True)),
     )
     notify.telegram.chat_id = str(notify.telegram.chat_id or "")
 

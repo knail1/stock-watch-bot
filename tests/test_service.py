@@ -423,3 +423,31 @@ def test_dashboard_renders_real_service(tmp_path: Path, monkeypatch: pytest.Monk
         r = client.get(f"{page}?token=246810")
         assert r.status_code == 200, page
     assert "Nintendo Switch 2" in client.get("/?token=246810").text
+
+
+async def test_status_notices_off_keeps_paused_and_recovered_off_the_phone(env) -> None:
+    svc, adapter, push, _ = env([BlockedError("HTTP 403")])
+    svc.config.notify.status_notices = False
+    await svc.check_now("switch2")
+    assert svc.scheduler.status()[0]["blocked"] is True  # still tracked (dashboard shows it)
+    adapter.results = [out_of_stock()]
+    await svc.check_now("switch2")
+    assert push.alerts == []
+    # Real stock still alerts.
+    adapter.results = [in_stock()]
+    await svc.check_now("switch2")
+    await svc.wait_background(timeout=5)
+    assert push.alerts and push.alerts[0].severity is Severity.CRITICAL
+    await svc.stop()
+
+
+def test_status_notices_config_parses(tmp_path) -> None:
+    import yaml as _yaml
+
+    path = write_config(tmp_path)
+    raw = _yaml.safe_load(path.read_text())
+    store = ConfigStore(path, resolver=SecretResolver(env_file=tmp_path / ".env", use_keychain=False))
+    assert store.load().notify.status_notices is True
+    raw["notify"]["status_notices"] = False
+    path.write_text(_yaml.safe_dump(raw))
+    assert store.load().notify.status_notices is False

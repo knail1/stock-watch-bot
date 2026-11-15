@@ -19,6 +19,7 @@ defaults:
   max_price: null         # above this price an in-stock alert is info, not critical
 
 notify:
+  status_notices: true   # false: keep "<Retailer> paused" / "checks recovered" notices off the phone (dashboard only)
   pushover:
     enabled: true
     user_key: ${PUSHOVER_USER_KEY}

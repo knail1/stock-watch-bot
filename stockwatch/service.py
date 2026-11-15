@@ -382,6 +382,9 @@ class StockWatchService:
                             f"cart:{target.key}")
             return
 
+        if d.kind in ("blocked_notice", "recovered") and not self.config.notify.status_notices:
+            log.info("%s for %s not sent (notify.status_notices is off)", d.kind, target.key)
+            return
         if d.kind == "blocked_notice":
             interval = self._interval_for(target)
             wait = f" Next try in about {interval / 60:.0f} min." if interval else ""
