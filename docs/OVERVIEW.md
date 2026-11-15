@@ -51,7 +51,7 @@ config.yaml ─► Scheduler ─► Retailer adapter ─► StockResult ─► S
 | Retailer | Data source | Local stock | Min interval |
 |---|---|---|---|
 | Best Buy | Official Products API (free key) | Per store, with distance and low stock | 60 s |
-| Target | The fulfillment JSON Target's own site uses; product page as fallback | Per store | 90 s |
+| Target | Product page in the Chrome profile (default); its fulfillment JSON is behind PerimeterX bot protection (HTTP 435) | Your selected store | 90 s |
 | Walmart | Product page in the Chrome profile | Your selected store only | 180 s |
 | GameStop | Product page in the Chrome profile | Your set store only | 120 s |
 | Nintendo Store | Product page in the Chrome profile | Online only; detects queue and invite-only sales | 120 s |

@@ -45,6 +45,8 @@ retailers:
     daily_call_budget: 45000       # rolling 24h cap enforced locally (max 50000)
     # min_interval_seconds: 60     # can only be raised above the built-in floor
   target:
+    # source: page (default) reads the product page in the bot's Chrome profile. Target's JSON
+    # API ("api") is behind PerimeterX bot protection and returns HTTP 435 to scripts.
     # The public web key Target's own site uses is built in; override if it rotates.
     # api_key: "..."
     max_stores: 3                  # fulfillment requests per check (nearest stores in radius)

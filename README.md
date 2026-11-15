@@ -20,7 +20,7 @@ Everything runs locally. Nothing is exposed to the public internet. The full des
 Spec phases 1–4 are implemented. Phase 0, the live data-source checks, needs your real keys
 and accounts; see the checklist below.
 
-- **Built:** Best Buy (official API), Target (fulfillment JSON) and Walmart, GameStop and
+- **Built:** Best Buy (official API), Target, Walmart, GameStop and
   Nintendo (product page in the Chrome profile) adapters. Also the scheduler (jitter,
   per-retailer floors, backoff up to 30 min), the restock dedupe engine, Pushover, Telegram
   and Mac sound alerts, and the add-to-cart helper with the checkout denylist. Plus the
@@ -103,7 +103,8 @@ You can check the whole pipeline on the laptop before setting up any phone apps.
    `[TEST]`. Add `--cart` to also run the **real** add-to-cart in the Chrome profile; it
    never checks out.
 3. Check a real product without your phone. Set `home.zip`, then run
-   `stockwatch check --url "<Target product URL>"`. Target needs no API key.
+   `stockwatch check --url "<product URL>"`. This opens the bot's Chrome window for Target,
+   Walmart, GameStop and Nintendo; Best Buy needs the API key.
 4. Run the service: `stockwatch run`. Open http://127.0.0.1:8787 and press Ctrl-C to stop.
 
 When it all works, turn Pushover and Telegram back on (steps 1 and 2), then add
@@ -144,8 +145,11 @@ StockWatch follows the Best Buy API Terms of Service. See
 Add-to-cart on bestbuy.com is governed by Best Buy's website Terms and Conditions, not the API
 terms. Read them, or set `add_to_cart: false` on watches that include Best Buy.
 
-Target uses the public key its own website uses (built in; override with
-`retailers.target.api_key` if it rotates).
+Target is checked by reading the product page in the bot's Chrome profile
+(`retailers.target.source: page`, the default). Its fulfillment JSON (`source: api`) sits behind
+PerimeterX bot protection and answers scripts with HTTP 435, which StockWatch treats as blocked.
+If Target shows a "press & hold" challenge even on the product page, StockWatch backs off and
+sends one "check manually" notice. It never tries to solve or get around the challenge.
 
 ### 4. Tailscale (dashboard on the phone)
 
@@ -238,8 +242,10 @@ Record a short note per retailer: **works / lags / blocked**.
 1. **Best Buy**: `stockwatch check --url "https://www.bestbuy.com/site/<...>/<sku>.p?skuId=<sku>"`.
    Confirm nearby stores, distances and `low_stock` look right. During a real restock compare the
    API result with the website; if the API lags, note it (fallback to page checks is future work).
-2. **Target**: dry-check a TCIN URL. Confirm the nearby stores and per-store status. If it fails
-   with "Target adapter broken", the redsky parameters or the public key changed.
+2. **Target**: dry-check a TCIN URL. Finding from 2026-11-14 (home ZIP): the redsky JSON returns
+   PerimeterX HTTP 435 to scripts, and the product page in an automated Chrome loaded but showed a
+   full-screen PerimeterX "press & hold" overlay. Both count as **blocked**. Re-test after
+   signing in to Target yourself in `stockwatch setup-profile target`.
 3. **Walmart, GameStop, Nintendo**: after `stockwatch setup-profile`, dry-check one product URL
    each. If you get `blocked`, stop and try later; do not hammer.
 4. **Add-to-cart selectors**: for each retailer, run `stockwatch check <id>` on an in-stock,

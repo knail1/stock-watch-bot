@@ -34,6 +34,7 @@ from .base import (
     BlockedError,
     BrowserCtx,
     ParseError,
+    looks_like_bot_block,
     looks_like_challenge,
     parse_price,
     pickup_store_note,
@@ -415,6 +416,11 @@ class TargetAdapter(BaseAdapter):
                 raise AdapterError("Target target has no tcin", kind=ErrorKind.CONFIG)
             target = Target(retailer=target.retailer, identifiers={**target.identifiers, "tcin": tcin},
                             store_ids=target.store_ids, watch_id=target.watch_id, db_id=target.db_id)
+        if self.source == "page":
+            if self.browser is None:
+                raise AdapterError("Target page check needs the Chrome profile (browser unavailable)",
+                                   kind=ErrorKind.CONFIG)
+            return await self._check_page(target, home)
         try:
             return await self._check_json(target, home, tcin)
         except ParseError as json_err:
@@ -433,6 +439,29 @@ class TargetAdapter(BaseAdapter):
                 return parse_product_page(html, home, target)
             except ParseError as page_err:
                 raise ParseError(f"{json_err}; page fallback: {page_err}") from None
+
+    @property
+    def source(self) -> str:
+        """`retailers.target.source`: "page" (default) or "api".
+
+        Target puts its redsky JSON behind PerimeterX bot protection (HTTP 435 for non-browser
+        clients), so the default reads the product page in the real Chrome profile, the spec's
+        documented fallback. "api" keeps the JSON path for when it works.
+        """
+        v = str(self._extra("source", "page")).strip().lower()
+        return v if v in ("page", "api") else "page"
+
+    async def _check_page(self, target: Target, home: Home) -> StockResult:
+        """Product page in the shared Chrome profile (shows the store selected in your Target account)."""
+        assert self.browser is not None
+        status, html = await self.browser.fetch_html(self.name, self.product_url(target), wait_selector="h1")
+        if looks_like_challenge(status, html) or looks_like_bot_block(status if status >= 400 else None, None):
+            raise BlockedError(f"Target product page challenged (HTTP {status})")
+        if status == 404:
+            raise AdapterError("Target product page HTTP 404", kind=ErrorKind.NOT_FOUND)
+        if status >= 400:
+            raise AdapterError(f"Target product page HTTP {status}", kind=ErrorKind.HTTP_ERROR)
+        return parse_product_page(html, home, target)
 
     async def _check_json(self, target: Target, home: Home, tcin: str) -> StockResult:
         nearby = await self._nearby_stores(home)
@@ -505,9 +534,11 @@ class TargetAdapter(BaseAdapter):
                                kind=ErrorKind.HTTP_ERROR) from exc
         endpoint = url.rsplit("/", 1)[-1]
         ctype = resp.headers.get("content-type", "")
-        if resp.status_code in (403, 429) or ("html" in ctype and looks_like_challenge(resp.status_code, resp.text)):
-            raise BlockedError(f"Target {endpoint}: HTTP {resp.status_code}"
-                               + (" challenge page" if resp.status_code < 400 else ""))
+        if looks_like_bot_block(resp.status_code, resp.text if resp.status_code >= 400 else None):
+            raise BlockedError(f"Target {endpoint}: bot protection (HTTP {resp.status_code}); "
+                               "Target blocks direct API requests, use retailers.target.source: page")
+        if "html" in ctype and looks_like_challenge(resp.status_code, resp.text):
+            raise BlockedError(f"Target {endpoint}: challenge page (HTTP {resp.status_code})")
         if resp.status_code in (400, 404) and "json" in ctype:
             # redsky reports unknown TCIN as a JSON error body; let the parser classify it.
             try:

@@ -210,7 +210,7 @@ async def test_check_end_to_end_in_stock(home, target):
     ful = respx.get(FULFILLMENT_URL).mock(side_effect=_fulfillment_by_store({"1923": load_json("in_stock.json")}))
     pdp = respx.get(PDP_URL).mock(return_value=httpx.Response(200, json=load_json("pdp_price.json")))
     async with httpx.AsyncClient() as http:
-        a = TargetAdapter(http=http)
+        a = TargetAdapter(http=http, settings=RetailerCfg(extra={"source": "api"}))
         r = await a.check(target, home)
         assert r.in_stock and r.price == 449.99 and r.product_name == "Nintendo Switch 2 Console"
         # 1923 response already covered 2088; Denton (31.7 mi) is outside the 25 mi radius.
@@ -232,7 +232,7 @@ async def test_check_out_of_stock_merges_stores(home, target):
     ful = respx.get(FULFILLMENT_URL).mock(side_effect=_fulfillment_by_store({"1923": oos, "2088": oos_2088}))
     respx.get(PDP_URL).mock(return_value=httpx.Response(200, json=load_json("pdp_price.json")))
     async with httpx.AsyncClient() as http:
-        r = await TargetAdapter(http=http).check(target, home)
+        r = await TargetAdapter(http=http, settings=RetailerCfg(extra={"source": "api"})).check(target, home)
     assert not r.in_stock and r.raw_status == "OUT_OF_STOCK"
     assert ful.call_count == 2
     assert {c.store_id for c in r.channels if c.store_id} == {"1923", "2088"}
@@ -246,7 +246,7 @@ async def test_check_uses_configured_api_key_and_pinned_store(home):
     pdp = respx.get(PDP_URL).mock(return_value=httpx.Response(200, json=load_json("pdp_price.json")))
     t = Target(retailer="target", identifiers={"tcin": TCIN}, store_ids=["1923"])
     async with httpx.AsyncClient() as http:
-        a = TargetAdapter(http=http, settings=RetailerCfg(extra={"api_key": "k-extra"}))
+        a = TargetAdapter(http=http, settings=RetailerCfg(extra={"api_key": "k-extra", "source": "api"}))
         r = await a.check(t, home)
     assert ful.calls[0].request.url.params["key"] == "k-extra"
     assert ful.calls[0].request.url.params["store_id"] == "1923"
@@ -262,7 +262,7 @@ async def test_check_blocked_status(status, home, target):
     browser = FakeBrowser(html=load_text("product_page_in_stock.html"))
     async with httpx.AsyncClient() as http:
         with pytest.raises(BlockedError):
-            await TargetAdapter(http=http, browser=browser).check(target, home)
+            await TargetAdapter(http=http, browser=browser, settings=RetailerCfg(extra={"source": "api"})).check(target, home)
     assert browser.fetched == []  # never falls back / retries when blocked
 
 
@@ -273,7 +273,7 @@ async def test_check_challenge_page_is_blocked(home, target):
         200, text=load_text("challenge.html"), headers={"content-type": "text/html"}))
     async with httpx.AsyncClient() as http:
         with pytest.raises(BlockedError):
-            await TargetAdapter(http=http).check(target, home)
+            await TargetAdapter(http=http, settings=RetailerCfg(extra={"source": "api"})).check(target, home)
 
 
 @respx.mock
@@ -282,7 +282,7 @@ async def test_check_garbage_without_browser_is_parse_error(home, target):
     respx.get(FULFILLMENT_URL).mock(return_value=httpx.Response(200, json=load_json("shape_changed.json")))
     async with httpx.AsyncClient() as http:
         with pytest.raises(ParseError, match="Target adapter broken"):
-            await TargetAdapter(http=http).check(target, home)
+            await TargetAdapter(http=http, settings=RetailerCfg(extra={"source": "api"})).check(target, home)
 
 
 @respx.mock
@@ -291,7 +291,7 @@ async def test_check_non_json_is_parse_error(home, target):
                                                                    headers={"content-type": "text/html"}))
     async with httpx.AsyncClient() as http:
         with pytest.raises(ParseError):
-            await TargetAdapter(http=http).check(target, home)
+            await TargetAdapter(http=http, settings=RetailerCfg(extra={"source": "api"})).check(target, home)
 
 
 @respx.mock
@@ -300,14 +300,14 @@ async def test_check_not_found(home, target):
     respx.get(FULFILLMENT_URL).mock(return_value=httpx.Response(404, json=load_json("not_found.json")))
     async with httpx.AsyncClient() as http:
         with pytest.raises(AdapterError) as ei:
-            await TargetAdapter(http=http).check(target, home)
+            await TargetAdapter(http=http, settings=RetailerCfg(extra={"source": "api"})).check(target, home)
     assert ei.value.kind == ErrorKind.NOT_FOUND
 
 
 async def test_check_missing_tcin_is_config_error(home):
     async with httpx.AsyncClient() as http:
         with pytest.raises(AdapterError) as ei:
-            await TargetAdapter(http=http).check(Target(retailer="target"), home)
+            await TargetAdapter(http=http, settings=RetailerCfg(extra={"source": "api"})).check(Target(retailer="target"), home)
     assert ei.value.kind == ErrorKind.CONFIG
 
 
@@ -317,7 +317,7 @@ async def test_check_falls_back_to_product_page(home, target):
     respx.get(FULFILLMENT_URL).mock(return_value=httpx.Response(200, json=load_json("shape_changed.json")))
     browser = FakeBrowser(html=load_text("product_page_in_stock.html"))
     async with httpx.AsyncClient() as http:
-        r = await TargetAdapter(http=http, browser=browser).check(target, home)
+        r = await TargetAdapter(http=http, browser=browser, settings=RetailerCfg(extra={"source": "api"})).check(target, home)
     assert r.in_stock and browser.fetched == [f"https://www.target.com/p/-/A-{TCIN}"]
 
 
@@ -332,7 +332,7 @@ async def test_check_fallback_failures(browser, exc, home, target):
     respx.get(FULFILLMENT_URL).mock(return_value=httpx.Response(200, json=load_json("unknown_status.json")))
     async with httpx.AsyncClient() as http:
         with pytest.raises(exc):
-            await TargetAdapter(http=http, browser=browser).check(target, home)
+            await TargetAdapter(http=http, browser=browser, settings=RetailerCfg(extra={"source": "api"})).check(target, home)
 
 
 # ------------------------------------------------------------------ add_to_cart with a fake page
@@ -506,3 +506,55 @@ async def test_is_signed_in():
     assert await is_signed_in(make_page(signed_in=True)) is True
     assert await is_signed_in(make_page(signed_in=False)) is False
     assert await is_signed_in(FakePage({})) is None
+
+
+# ------------------------------------------------------------------ PerimeterX block + page source
+
+PX_BODY = {"appId": "PXGWPp4wUS", "blockScript": "https://captcha.px-cdn.net/PXGWPp4wUS/captcha.js",
+           "hostUrl": "https://collector-PXGWPp4wUS.perimeterx.net", "uuid": "x", "vid": ""}
+
+
+@respx.mock
+async def test_perimeterx_435_is_blocked_not_http_error(home: Home, target: Target) -> None:
+    route = respx.get(url__startswith=tgt.REDSKY_BASE).mock(return_value=httpx.Response(435, json=PX_BODY))
+    async with httpx.AsyncClient() as http:
+        with pytest.raises(BlockedError) as ei:
+            await TargetAdapter(http=http, settings=RetailerCfg(extra={"source": "api"})).check(target, home)
+    assert route.call_count == 1  # never retried
+    assert "bot protection" in str(ei.value) and "source: page" in str(ei.value)
+
+
+def test_page_is_default_source() -> None:
+    assert TargetAdapter(http=None).source == "page"  # type: ignore[arg-type]
+    assert TargetAdapter(http=None, settings=RetailerCfg(extra={"source": "API"})).source == "api"  # type: ignore[arg-type]
+    assert TargetAdapter(http=None, settings=RetailerCfg(extra={"source": "bogus"})).source == "page"  # type: ignore[arg-type]
+
+
+@respx.mock
+async def test_page_source_uses_browser_and_no_api(home: Home, target: Target) -> None:
+    api = respx.get(url__startswith=tgt.REDSKY_BASE).mock(return_value=httpx.Response(200, json={}))
+    browser = FakeBrowser(200, (FIX / "product_page_in_stock.html").read_text())
+    async with httpx.AsyncClient() as http:
+        r = await TargetAdapter(http=http, browser=browser).check(target, home)
+    assert r.in_stock and api.call_count == 0
+    assert browser.fetched == [f"https://www.target.com/p/-/A-{TCIN}"]
+
+
+async def test_page_source_challenge_is_blocked(home: Home, target: Target) -> None:
+    browser = FakeBrowser(200, (FIX / "challenge.html").read_text())
+    with pytest.raises(BlockedError):
+        await TargetAdapter(http=None, browser=browser).check(target, home)  # type: ignore[arg-type]
+
+
+async def test_page_source_without_browser_is_config_error(home: Home, target: Target) -> None:
+    with pytest.raises(AdapterError) as ei:
+        await TargetAdapter(http=None).check(target, home)  # type: ignore[arg-type]
+    assert ei.value.kind == ErrorKind.CONFIG
+
+
+def test_bot_block_detection() -> None:
+    from stockwatch.adapters.base import looks_like_bot_block
+
+    assert looks_like_bot_block(435, None)
+    assert looks_like_bot_block(200, '{"blockScript":"https://captcha.px-cdn.net/x"}')
+    assert not looks_like_bot_block(200, '{"data":{"product":{}}}')

@@ -222,25 +222,61 @@ def pickup_store_note(retailer_display: str, matched: ChannelAvail, page_text: s
             f"check the pickup store in the cart")
 
 
+_CHALLENGE_PHRASES = ("verify you are human", "press & hold", "press &amp; hold", "press and hold",
+                      "are you a human", "robot or human", "robot check", "please verify you are a human")
+#: Markup of an *active* challenge (not just a script that could show one later).
+_CHALLENGE_ELEMENTS = ('id="px-captcha"', "id='px-captcha'", 'class="g-recaptcha"', "cf-chl-",
+                       "challenge-platform", "_incapsula_resource")
+_PX_MODAL_RE = re.compile(r'<iframe[^>]*id="px-captcha-modal"[^>]*style="[^"]*display:\s*block', re.I)
+#: Real product pages are hundreds of KB; challenge interstitials are small.
+_SMALL_PAGE = 50_000
+
+
 def looks_like_challenge(status: int | None, html: str | None) -> bool:
-    """Heuristic for 403/429 or a challenge/CAPTCHA interstitial (spec: back off, never retry)."""
-    if status in (403, 429):
+    """Heuristic for 403/429 or a challenge/CAPTCHA interstitial or overlay (spec: back off, never retry).
+
+    Bare words like "captcha" are common inside normal pages' scripts and config
+    (e.g. Target's ``GLOBAL_CAPTCHA_ENABLED``), so on full-size pages only visible challenge
+    wording or an active challenge element counts.
+    """
+    if status in (403, 429, 435):
         return True
     if not html:
         return False
-    head = html[:20000].lower()
-    # Only treat as a challenge when the page is small/interstitial-like or has explicit captcha markers.
-    strong = ("captcha" in head or "px-captcha" in head or "verify you are human" in head
-              or "press & hold" in head or "press and hold" in head or "cf-chl" in head
-              or "are you a human" in head or "robot check" in head)
-    if strong:
+    low = html.lower()
+    if _PX_MODAL_RE.search(html):           # PerimeterX overlay shown on top of the page
         return True
-    weak = any(m in head for m in ("access denied", "request unsuccessful", "unusual traffic"))
-    return weak and len(html) < 15000
+    if any(m in low for m in _CHALLENGE_ELEMENTS):
+        return True
+    small = len(html) < _SMALL_PAGE
+    if any(p in (low if small else _visible_text(low)) for p in _CHALLENGE_PHRASES):
+        return True
+    if small and ("captcha" in low or "access denied" in low or "request unsuccessful" in low
+                  or "unusual traffic" in low):
+        return True
+    return False
+
+
+def _visible_text(low_html: str) -> str:
+    """Lower-cased page text without <script>/<style> contents (cheap, regex-based)."""
+    return re.sub(r"<(script|style)\b[^>]*>.*?</\1>", " ", low_html, flags=re.S)
+
+
+#: Non-standard status PerimeterX/HUMAN bot protection returns with a JSON block payload.
+BOT_BLOCK_STATUSES = (403, 429, 435)
+_BOT_BLOCK_JSON_MARKERS = ("blockscript", "perimeterx", "px-cdn.net", "px-captcha", "captcha.js")
+
+
+def looks_like_bot_block(status: int | None, body: str | None) -> bool:
+    """True for bot-protection blocks that arrive as JSON (e.g. PerimeterX HTTP 435 + blockScript)."""
+    if status in BOT_BLOCK_STATUSES:
+        return True
+    head = (body or "")[:4000].lower()
+    return any(m in head for m in _BOT_BLOCK_JSON_MARKERS)
 
 
 def raise_for_http(resp: httpx.Response) -> None:
-    if resp.status_code in (403, 429):
+    if resp.status_code in BOT_BLOCK_STATUSES:
         raise BlockedError(f"HTTP {resp.status_code}")
     if resp.status_code == 404:
         raise AdapterError("HTTP 404", kind=ErrorKind.NOT_FOUND)

@@ -37,7 +37,7 @@ log = logging.getLogger("stockwatch.cli")
 EXAMPLE_CONFIG = paths.assets_dir().parent / "config.example.yaml"
 CHROME_APPS = (Path("/Applications/Google Chrome.app"), Path.home() / "Applications/Google Chrome.app")
 #: Retailers whose stock checks need the browser (others use JSON APIs).
-BROWSER_RETAILERS = ("walmart", "gamestop", "nintendo")
+BROWSER_RETAILERS = ("target", "walmart", "gamestop", "nintendo")  # Target: page source (redsky is bot-gated)
 
 ENV_TEMPLATE = """\
 # StockWatch secrets. Referenced from config.yaml as ${NAME}. Never commit this file (chmod 600).
