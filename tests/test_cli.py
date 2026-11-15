@@ -30,6 +30,7 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     chrome = tmp_path / "Google Chrome.app"
     chrome.mkdir()
     monkeypatch.setattr(cli, "CHROME_APPS", (chrome,))
+    monkeypatch.setattr("stockwatch.health.ac_sleep_minutes", lambda: None)  # never read this Mac's pmset
     return h
 
 
@@ -286,3 +287,21 @@ def test_doctor_bestbuy_budget_exceeded(home: Path) -> None:
     path.write_text(yaml.safe_dump(raw))
     code, rows, _ = run_doctor("--offline")
     assert rows["bestbuy api budget"].status == "FAIL" and code == 1
+
+
+@pytest.mark.parametrize("minutes,status", [(0, "PASS"), (1, "WARN")])
+def test_doctor_reports_mac_sleep_on_power(home: Path, monkeypatch: pytest.MonkeyPatch,
+                                           minutes: int, status: str) -> None:
+    write_config(home)
+    monkeypatch.setattr("stockwatch.health.ac_sleep_minutes", lambda: minutes)
+    code, rows, out = run_doctor("--offline")
+    assert rows["mac sleep on power"].status == status
+    assert code == 0, out  # a WARN never fails the doctor
+    if status == "WARN":
+        assert "sudo pmset -c sleep 0" in out
+
+
+def test_doctor_omits_sleep_row_when_unknown(home: Path) -> None:
+    write_config(home)
+    _, rows, _ = run_doctor("--offline")
+    assert "mac sleep on power" not in rows

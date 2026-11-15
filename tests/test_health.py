@@ -212,3 +212,43 @@ def test_power_assertion_real_caffeinate() -> None:
         assert pa.active
         proc = pa.proc
     assert proc is not None and proc.poll() is not None
+
+
+PMSET_SAMPLE = """System-wide power settings:
+Currently in use:
+Battery Power:
+ sleep                1
+ displaysleep         30
+AC Power:
+ standby              1
+ displaysleep         30
+ sleep                {ac}
+ disksleep            0
+"""
+
+
+def test_parse_ac_sleep_reads_only_the_ac_section() -> None:
+    from stockwatch.health import parse_ac_sleep
+
+    assert parse_ac_sleep(PMSET_SAMPLE.format(ac=0)) == 0
+    assert parse_ac_sleep(PMSET_SAMPLE.format(ac=10)) == 10
+    assert parse_ac_sleep("Battery Power:\n sleep 1\n") is None
+    assert parse_ac_sleep("") is None
+
+
+def test_ac_sleep_minutes_off_macos_and_on_error() -> None:
+    import subprocess
+
+    from stockwatch.health import ac_sleep_minutes
+
+    assert ac_sleep_minutes(platform="linux") is None
+
+    def boom(*a, **k):
+        raise OSError("no pmset")
+
+    assert ac_sleep_minutes(run=boom, platform="darwin") is None
+
+    def fake(*a, **k):
+        return subprocess.CompletedProcess(a, 0, PMSET_SAMPLE.format(ac=0), "")
+
+    assert ac_sleep_minutes(run=fake, platform="darwin") == 0

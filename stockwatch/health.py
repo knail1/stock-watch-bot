@@ -217,6 +217,33 @@ class HealthMonitor:
             await asyncio.sleep(61)
 
 
+def ac_sleep_minutes(
+    run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+    platform: str = sys.platform,
+) -> int | None:
+    """Minutes of idle before the Mac sleeps on the power adapter (`pmset -g custom`,
+    "AC Power" section, `sleep` row). 0 means never. None when unknown or not macOS."""
+    if platform != "darwin":
+        return None
+    try:
+        out = run(["pmset", "-g", "custom"], capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return parse_ac_sleep(out)
+
+
+def parse_ac_sleep(text: str) -> int | None:
+    in_ac = False
+    for line in text.splitlines():
+        if line.strip().endswith(":") and not line.startswith(" "):
+            in_ac = line.strip() == "AC Power:"
+            continue
+        parts = line.split()
+        if in_ac and len(parts) == 2 and parts[0] == "sleep" and parts[1].isdigit():
+            return int(parts[1])
+    return None
+
+
 class PowerAssertion:
     """Keeps the Mac from idle-sleeping via `caffeinate -i -w <our pid>`. No-op off macOS."""
 

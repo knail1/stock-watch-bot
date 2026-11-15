@@ -4,7 +4,8 @@
 #  2. checks Google Chrome is installed (we drive real Chrome via channel=chrome,
 #     so no Playwright browser download is needed)
 #  3. creates ~/StockWatch (config.yaml, .env template chmod 600, chrome-profile chmod 700)
-#  4. runs `stockwatch install` to load the launchd agent
+#  4. stops idle sleep on the power adapter (sudo pmset -c sleep 0) if it isn't already
+#  5. runs `stockwatch install` to load the launchd agent
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -77,6 +78,27 @@ ENV
 fi
 chmod 600 "$SW_HOME/.env"
 
+# ---------------------------------------------------------------- keep the Mac awake on power
+# A sleeping Mac checks nothing. The service holds `caffeinate -i` while it runs; this also
+# stops idle sleep on the power adapter, so a crash-and-restart gap or a stopped service
+# can't let the Mac doze off. Battery settings are left alone. A closed lid without an
+# external display still sleeps.
+ac_sleep() { pmset -g custom 2>/dev/null | awk '/^AC Power:/{ac=1;next} /^[^ ]/{ac=0} ac && $1=="sleep"{print $2}'; }
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  if [[ "$(ac_sleep)" == "0" ]]; then
+    say "Mac already never sleeps on the power adapter"
+  elif [[ -t 0 ]]; then
+    say "Stopping idle sleep on the power adapter (sudo pmset -c sleep 0; asks for your password)"
+    if sudo pmset -c sleep 0 && [[ "$(ac_sleep)" == "0" ]]; then
+      say "Done: the Mac no longer sleeps on the power adapter"
+    else
+      warn "Could not change the sleep setting; run: sudo pmset -c sleep 0"
+    fi
+  else
+    warn "Mac sleeps on the power adapter; run: sudo pmset -c sleep 0"
+  fi
+fi
+
 # ---------------------------------------------------------------- launchd
 say "Installing launchd agent"
 STOCKWATCH_HOME="$SW_HOME" "$SW" install
@@ -88,6 +110,6 @@ Done. Next steps:
   2. $SW setup-profile   # sign in to each retailer in the dedicated Chrome profile
   3. $SW doctor          # verify config, secrets, alerts and adapters
   4. $SW test-alert
-  System Settings > Battery/Energy: prevent automatic sleep when on power.
+  Keep the Mac plugged in; with the lid closed it needs an external display.
 Logs: $SW_HOME/logs/stockwatch.log
 EOF

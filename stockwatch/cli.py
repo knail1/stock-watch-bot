@@ -27,7 +27,7 @@ from typing import Any, Callable, TextIO
 
 import httpx
 
-from . import __version__, paths
+from . import __version__, health, paths
 from .adapters.registry import build_adapters, identifiers_from_url
 from .config import Config, ConfigError, ConfigStore, WatchCfg
 from .models import RETAILERS, Target
@@ -257,6 +257,12 @@ async def run_doctor(store: ConfigStore, *, network: bool = True, browser: bool 
         "" if config.dashboard.pin else "no PIN: dashboard listens on 127.0.0.1 only")
     add(PASS if config.health.heartbeat_url else WARN, "heartbeat",
         "" if config.health.heartbeat_url else "health.heartbeat_url not set: a dead Mac goes unnoticed")
+    sleep_min = health.ac_sleep_minutes()
+    if sleep_min is not None:
+        add(PASS if sleep_min == 0 else WARN, "mac sleep on power",
+            "never sleeps on the power adapter" if sleep_min == 0 else
+            f"sleeps after {sleep_min} min idle on the power adapter: run `sudo pmset -c sleep 0` "
+            "(or re-run scripts/install.sh)")
     bad_ids = [f"{w.id}/{t.retailer}" for w in config.watches for t in w.targets
                if any("FILL_IN" in v or (v.isupper() and "_" in v) for v in t.identifiers.values())]
     if bad_ids:
