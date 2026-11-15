@@ -1,0 +1,17 @@
+{
+  "product": {
+    "sku": 6614313,
+    "name": "Nintendo Switch 2 System",
+    "salePrice": 449.99,
+    "onlineAvailability": false,
+    "inStoreAvailability": true,
+    "orderable": "SoldOut",
+    "url": "https://api.bestbuy.com/click/-/6614313/pdp"
+  },
+  "stores": {
+    "ispuEligible": true,
+    "stores": [
+      {"storeID": "1498", "name": "Denton", "address": "2700 S Loop 288", "city": "Denton", "state": "TX", "postalCode": "76205", "distance": 31.4, "lowStock": false}
+    ]
+  }
+}

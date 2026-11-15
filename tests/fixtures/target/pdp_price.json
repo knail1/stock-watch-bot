@@ -1,0 +1,9 @@
+{
+  "data": {
+    "product": {
+      "tcin": "94693225",
+      "item": {"product_description": {"title": "Nintendo Switch 2 Console"}},
+      "price": {"current_retail": 449.99, "formatted_current_price": "$449.99", "formatted_current_price_type": "reg"}
+    }
+  }
+}

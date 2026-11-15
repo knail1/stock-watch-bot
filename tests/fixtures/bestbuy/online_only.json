@@ -1,0 +1,15 @@
+{
+  "product": {
+    "sku": 6614313,
+    "name": "Nintendo Switch 2 System",
+    "salePrice": 429.99,
+    "onlineAvailability": true,
+    "inStoreAvailability": false,
+    "orderable": "Available",
+    "url": "https://api.bestbuy.com/click/-/6614313/pdp"
+  },
+  "stores": {
+    "ispuEligible": false,
+    "stores": []
+  }
+}

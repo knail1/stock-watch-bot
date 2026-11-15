@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "_status.html" import dot, status_word, op with context %}
+{% block title %}{{ w.name }} · StockWatch{% endblock %}
+{% block content %}
+<article class="card">
+  <h1>{{ dot(w.status) }} {{ w.name }}</h1>
+  <dl class="facts">
+    <dt>Status</dt><dd>{{ status_word(w.status) }}</dd>
+    <dt>Max price</dt><dd>{{ w.max_price|price or "none" }}</dd>
+    <dt>Fulfillment</dt><dd>{% for f in w.fulfillment %}{{ channel_labels.get(f, f) }}{{ ", " if not loop.last }}{% endfor %}</dd>
+    <dt>Radius</dt><dd>{{ "%g mi"|format(w.radius_miles) if w.radius_miles else "default" }}</dd>
+    <dt>Interval</dt><dd>{{ "%ss"|format(w.interval_seconds) if w.interval_seconds else "default" }}</dd>
+    <dt>Add to cart</dt><dd>{{ "yes" if w.add_to_cart else "no" }}</dd>
+    <dt>Last in stock</dt><dd>{{ w.last_in_stock_at|dt }}</dd>
+  </dl>
+  <div class="actions">
+    {{ op(w, "check", "Check now", "", "primary") }}
+    {% if w.enabled %}{{ op(w, "pause", "Pause") }}{% else %}{{ op(w, "resume", "Resume") }}{% endif %}
+    <a class="button" href="/watches/{{ w.id }}/edit">Edit</a>
+    {{ op(w, "delete", "Delete", "", "danger") }}
+  </div>
+</article>
+
+<h2>Targets</h2>
+{% for t in w.targets %}
+<article class="card">
+  <div class="row">{{ dot(t.status) }}<strong>{{ t.label }}</strong>
+    {% if t.product_url %}<a class="muted push" href="{{ t.product_url }}" target="_blank" rel="noopener noreferrer">open</a>{% endif %}</div>
+  <dl class="facts">
+    <dt>Last check</dt><dd>{{ t.last_check_at|ago }}{% if t.last_result %} · {{ t.last_result }}{% endif %}</dd>
+    <dt>Last price</dt><dd>{{ t.last_price|price or "—" }}</dd>
+    <dt>Last in stock</dt><dd>{{ t.last_in_stock_at|dt }}</dd>
+    <dt>Interval</dt><dd>{{ "%ds"|format(t.interval_seconds) if t.interval_seconds else "—" }}</dd>
+    {% if t.blocked %}<dt>Blocked</dt><dd class="warn">backing off, check manually</dd>{% endif %}
+    {% if t.error %}<dt>Error</dt><dd class="err">{{ t.error }}{% if t.consecutive_failures %} ({{ t.consecutive_failures }} in a row){% endif %}</dd>{% endif %}
+  </dl>
+</article>
+{% endfor %}
+
+<h2>Recent checks</h2>
+{% if not checks %}<p class="muted">No checks yet.</p>{% endif %}
+<ul class="list">
+{% for c in checks %}
+  <li><span class="dot {{ 'green' if c.in_stock else ('red' if c.error else 'grey') }}"></span>
+    <span class="when">{{ c.checked_at|dt }}</span>
+    <strong>{{ retailer_labels.get(c.retailer, c.retailer) }}</strong>
+    {{ c.error or c.raw_status or ("in stock" if c.in_stock else "out of stock") }}
+    {% if c.price %}{{ c.price|price }}{% endif %}
+    {% if c.summary %}<div class="muted">{{ c.summary }}</div>{% endif %}
+  </li>
+{% endfor %}
+</ul>
+{% endblock %}

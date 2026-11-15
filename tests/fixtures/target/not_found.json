@@ -1,0 +1,4 @@
+{
+  "errors": [{"message": "No product found with tcin 00000000", "path": ["product"]}],
+  "data": {"product": null}
+}
