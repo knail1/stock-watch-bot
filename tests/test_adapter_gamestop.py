@@ -370,3 +370,13 @@ async def test_add_to_cart_challenge_and_disabled() -> None:
     res = await adapter(None).add_to_cart(target(), StockResult("gamestop", True), FakeBrowser(page=page))
     assert not res.success and "disabled" in res.message
     assert page.locators["button.add-to-cart"].clicks == 0
+
+
+def test_promo_widgets_and_foreign_offer_do_not_fake_in_stock() -> None:
+    """Regression (live page 2026-11-14): a 'GameStop Pro' promo blob said Available and the JSON-LD
+    offer for another SKU said InStock, while the product form said data-available=false."""
+    t = Target(retailer="gamestop", identifiers={"url": URL, "product_id": "20037854"})
+    r = parse_product_page(fx("promo_widgets_unavailable.html"), HOME, t)
+    assert not r.in_stock and r.raw_status == "OUT_OF_STOCK"
+    assert r.product_name == "Nintendo Switch 2 Example Edition"  # not "GameStop Pro"
+    assert r.price == 519.99

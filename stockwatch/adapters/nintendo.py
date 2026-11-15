@@ -97,7 +97,10 @@ _AVAIL_MAP: tuple[tuple[str, str], ...] = (
     ("available", RAW_IN_STOCK),
 )
 _AVAIL_KEYS = ("availability", "purchaseAvailability", "productAvailability", "stockStatus",
-               "inventoryStatus", "purchaseStatus", "purchaseType", "saleStatus", "status")
+               "inventoryStatus", "purchaseStatus", "purchaseType", "saleStatus", "status",
+               "isSalableQty")
+#: Apollo cache keys carry GraphQL arguments: ``prices({"personalized":false})`` -> ``prices``.
+_APOLLO_ARGS_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\(.*\)$", re.S)
 _BUTTON_OOS = ("out of stock", "sold out", "notify me", "unavailable", "coming soon")
 
 
@@ -120,7 +123,23 @@ def _next_data(tree: HTMLParser) -> dict[str, Any] | None:
         data = json.loads(node.text() or "")
     except ValueError:
         return None
-    return data if isinstance(data, dict) else None
+    return _strip_apollo_args(data) if isinstance(data, dict) else None
+
+
+def _strip_apollo_args(obj: Any) -> Any:
+    """Recursively rename ``field({...args})`` keys to ``field`` (a plain key wins if both exist)."""
+    if isinstance(obj, dict):
+        out: dict[str, Any] = {}
+        for k, v in obj.items():
+            m = _APOLLO_ARGS_RE.match(k) if isinstance(k, str) else None
+            key = m.group(1) if m else k
+            if key in out and m:
+                continue
+            out[key] = _strip_apollo_args(v)
+        return out
+    if isinstance(obj, list):
+        return [_strip_apollo_args(v) for v in obj]
+    return obj
 
 
 def _walk(obj: Any) -> Iterator[dict[str, Any]]:
@@ -324,6 +343,12 @@ def parse_nintendo_page(html: str, home: Home | None = None, target: Target | No
 
     button_texts = [t for t, _ in buttons]
     status = _status_from_texts(avail_texts)
+    # Current store pages (2026): Apollo ``Product`` records carry ``isSalableQty`` (bool), the
+    # store's own "can be bought right now" flag. It overrides marketing text like
+    # "Nintendo Store exclusive".
+    salable = product.get("isSalableQty") if product is not None else None
+    if isinstance(salable, bool) and status in (None, RAW_IN_STOCK, RAW_OUT_OF_STOCK):
+        status = RAW_IN_STOCK if salable else RAW_OUT_OF_STOCK
     # Invite-only is decided from this product only: its JSON availability, or (when it has
     # no enabled Add to cart) an invite button in its purchase area, or, as a last resort when
     # nothing else is recognisable, invite wording in the purchase area's text.

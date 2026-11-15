@@ -357,3 +357,21 @@ async def test_add_to_cart_queue_missing_disabled_and_unconfirmed() -> None:
 async def test_is_signed_in_hook() -> None:
     assert await is_signed_in(FakePage(fx("in_stock.html"))) is True
     assert await is_signed_in(FakePage(fx("sold_out_apollo.html"))) is False
+
+
+# ---- 2026 store layout: Apollo cache with argument-suffixed keys and isSalableQty ----
+
+def _apollo_target() -> Target:
+    return Target(retailer="nintendo", identifiers={"url": "https://www.nintendo.com/us/store/products/example-console-900001/",
+                                                     "product_id": "example-console-900001"})
+
+
+def test_apollo_sold_out_page() -> None:
+    r = parse_nintendo_page(fx("apollo_sold_out.html"), HOME, _apollo_target())
+    assert not r.in_stock and r.raw_status == "OUT_OF_STOCK"
+    assert r.price == 519.99 and r.product_name == "Example Console Edition"  # not the decoy controller
+
+
+def test_apollo_in_stock_page() -> None:
+    r = parse_nintendo_page(fx("apollo_in_stock.html"), HOME, _apollo_target())
+    assert r.in_stock and r.raw_status == "IN_STOCK" and r.price == 519.99

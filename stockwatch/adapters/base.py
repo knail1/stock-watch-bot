@@ -225,8 +225,11 @@ def pickup_store_note(retailer_display: str, matched: ChannelAvail, page_text: s
 _CHALLENGE_PHRASES = ("verify you are human", "press & hold", "press &amp; hold", "press and hold",
                       "are you a human", "robot or human", "robot check", "please verify you are a human")
 #: Markup of an *active* challenge (not just a script that could show one later).
-_CHALLENGE_ELEMENTS = ('id="px-captcha"', "id='px-captcha'", 'class="g-recaptcha"', "cf-chl-",
-                       "challenge-platform", "_incapsula_resource")
+_CHALLENGE_ELEMENTS = ('id="px-captcha"', "id='px-captcha'", 'class="g-recaptcha"', "_incapsula_resource")
+#: Cloudflare loads /cdn-cgi/challenge-platform/... scripts on *normal* pages too (e.g. GameStop),
+#: so these only count on a small interstitial or a "Just a moment..." page.
+_CLOUDFLARE_MARKERS = ("challenge-platform", "cf-chl-")
+_CF_INTERSTITIAL_RE = re.compile(r"<title>\s*(just a moment|attention required)", re.I)
 _PX_MODAL_RE = re.compile(r'<iframe[^>]*id="px-captcha-modal"[^>]*style="[^"]*display:\s*block', re.I)
 #: Real product pages are hundreds of KB; challenge interstitials are small.
 _SMALL_PAGE = 50_000
@@ -249,6 +252,8 @@ def looks_like_challenge(status: int | None, html: str | None) -> bool:
     if any(m in low for m in _CHALLENGE_ELEMENTS):
         return True
     small = len(html) < _SMALL_PAGE
+    if _CF_INTERSTITIAL_RE.search(html[:5000]) or (small and any(m in low for m in _CLOUDFLARE_MARKERS)):
+        return True
     if any(p in (low if small else _visible_text(low)) for p in _CHALLENGE_PHRASES):
         return True
     if small and ("captcha" in low or "access denied" in low or "request unsuccessful" in low

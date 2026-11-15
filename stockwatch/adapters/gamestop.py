@@ -101,7 +101,20 @@ def _first(value: Any) -> Any:
     return value
 
 
-def _gtm_data(tree: HTMLParser) -> dict[str, Any]:
+def _main_pid(tree: HTMLParser) -> str | None:
+    """The page's own product id: the first ``data-pid`` (later ones belong to promo/recommendation widgets)."""
+    node = tree.css_first("[data-pid]")
+    return node.attributes.get("data-pid") if node is not None else None
+
+
+def _gtm_data(tree: HTMLParser, pid: str | None = None, name: str | None = None) -> dict[str, Any]:
+    """GTM product data for *this* page's product.
+
+    Real GameStop pages carry dozens of ``data-gtmdata`` blobs (a "GameStop Pro" promo, related
+    items...). Only a blob whose sku/productID matches the page's product id, or whose name matches
+    the page title, is trusted; a page with a single blob (older layout) is accepted as is.
+    """
+    blobs: list[dict[str, Any]] = []
     for node in tree.css("[data-gtmdata]"):
         raw = node.attributes.get("data-gtmdata") or ""
         try:
@@ -110,8 +123,49 @@ def _gtm_data(tree: HTMLParser) -> dict[str, Any]:
             continue
         if isinstance(data, dict):
             info = data.get("productInfo")
-            return info if isinstance(info, dict) else data
+            blobs.append(info if isinstance(info, dict) else data)
+    if len(blobs) == 1:
+        return blobs[0]
+    want_name = (name or "").strip().lower()
+    for b in blobs:
+        ids = {str(b.get(k)) for k in ("sku", "productID", "id", "pid") if b.get(k)}
+        if pid and pid in ids:
+            return b
+        if want_name and str(b.get("name") or "").strip().lower() == want_name:
+            return b
     return {}
+
+
+def _main_availability(tree: HTMLParser) -> bool | None:
+    """The main product form's availability flags (``.product-availability`` data attributes).
+
+    ``data-ready-to-order``/``data-available`` = "true" -> purchasable; both "false" -> not.
+    """
+    node = tree.css_first(".product-availability[data-available], .product-availability[data-ready-to-order]")
+    if node is None:
+        return None
+    flags = [node.attributes.get(k) for k in ("data-ready-to-order", "data-available")]
+    flags = [str(f).strip().lower() for f in flags if f not in (None, "", "null")]
+    if not flags:
+        return None
+    if "true" in flags:
+        return True
+    return False if all(f == "false" for f in flags) else None
+
+
+def _matching_offer(ld: dict[str, Any], pid: str | None) -> dict[str, Any] | None:
+    """The JSON-LD offer for this product (offers can point at other SKUs, e.g. a graded-card listing)."""
+    offers = ld.get("offers") if ld else None
+    offers = offers if isinstance(offers, list) else [offers] if isinstance(offers, dict) else []
+    offers = [o for o in offers if isinstance(o, dict)]
+    if not offers:
+        return None
+    if not pid:
+        return offers[0] if len(offers) == 1 else None
+    for o in offers:
+        if str(o.get("sku") or "") == pid or f"/{pid}.html" in str(o.get("url") or ""):
+            return o
+    return None
 
 
 def _utag_data(html: str) -> dict[str, Any]:
@@ -155,17 +209,22 @@ def _radio_disabled(container: Node) -> bool:
 
 
 def _ship_channel(tree: HTMLParser, gtm: dict[str, Any], utag: dict[str, Any],
-                  ld: dict[str, Any]) -> tuple[ChannelAvail | None, str]:
-    """Return (ship channel, availability text used)."""
+                  offer: dict[str, Any] | None, main: bool | None = None) -> tuple[ChannelAvail | None, str]:
+    """Return (ship channel, availability text used).
+
+    ``main`` is the product form's own availability flag; when it says "not available" no other
+    signal may turn shipping on (promo widgets and stale JSON-LD often say "InStock").
+    """
     container = _first_node(tree, SHIP_SELECTORS)
     if container is not None:
         msg = _text(container.css_first(".availability-msg")) or _text(container)
         verdict = _classify(msg)
         if verdict is not None:
-            return ChannelAvail("ship", verdict and not _radio_disabled(container)), msg
-    offers = _first(ld.get("offers")) if ld else None
+            return ChannelAvail("ship", verdict and main is not False and not _radio_disabled(container)), msg
+    if main is not None:
+        return ChannelAvail("ship", main), f"product form available={str(main).lower()}"
     candidates = (gtm.get("availability"), _first(utag.get("product_availability")),
-                  offers.get("availability") if isinstance(offers, dict) else None)
+                  offer.get("availability") if offer else None)
     for text in candidates:
         verdict = _classify(text)
         if verdict is not None:
@@ -223,9 +282,14 @@ def parse_product_page(html: str, home: Home, target: Target) -> StockResult:
     if is_challenge_html(html):
         raise BlockedError("GameStop challenge / Access Denied page")
     tree = HTMLParser(html)
-    gtm, utag, ld = _gtm_data(tree), _utag_data(html), _ld_product(tree)
+    pid = _main_pid(tree) or target.get("product_id")
+    ld = _ld_product(tree)
+    page_name = ld.get("name") if ld else None
+    page_name = page_name or _text(tree.css_first("h1.product-name")) or _text(tree.css_first("h1")) or None
+    gtm, utag = _gtm_data(tree, pid, page_name), _utag_data(html)
+    offer = _matching_offer(ld, pid)
 
-    ship, ship_text = _ship_channel(tree, gtm, utag, ld)
+    ship, ship_text = _ship_channel(tree, gtm, utag, offer, _main_availability(tree))
     pickup = _pickup_channel(tree, utag)
     if ship is None and pickup is None:
         raise ParseError("no GameStop availability signals found (page layout changed?)")
@@ -233,16 +297,14 @@ def parse_product_page(html: str, home: Home, target: Target) -> StockResult:
         pickup = None  # the profile's set store is not one of the pinned stores
     channels = [c for c in (pickup, ship) if c is not None]
 
-    offers = _first(ld.get("offers")) if ld else None
     price = None
     for raw in (gtm.get("price"), _first(utag.get("product_price")),
-                offers.get("price") if isinstance(offers, dict) else None,
+                offer.get("price") if offer else None,
                 _text(tree.css_first(".actual-price")) or None):
         price = parse_price(raw)
         if price is not None:
             break
-    name = (gtm.get("name") or _first(utag.get("product_name")) or ld.get("name")
-            or _text(tree.css_first("h1.product-name")) or None)
+    name = page_name or gtm.get("name") or _first(utag.get("product_name")) or None
 
     available = [c for c in channels if c.available]
     if not available:

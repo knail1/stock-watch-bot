@@ -39,3 +39,15 @@ def test_small_interstitials_and_status_codes() -> None:
     assert looks_like_challenge(200, "<html><title>Access Denied</title></html>")
     assert looks_like_challenge(403, None) and looks_like_challenge(429, "") and looks_like_challenge(435, "{}")
     assert not looks_like_challenge(200, None)
+
+
+def test_cloudflare_background_script_on_normal_page_is_not_a_challenge() -> None:
+    # GameStop product pages load this on every normal visit.
+    script = '<script src="https://www.gamestop.com/cdn-cgi/challenge-platform/scripts/precursor/main.js?ray=x"></script>'
+    assert not looks_like_challenge(200, page(script))
+
+
+def test_cloudflare_interstitial_is_a_challenge() -> None:
+    assert looks_like_challenge(200, "<html><head><title>Just a moment...</title></head>"
+                                     "<body><div id='cf-chl-widget'></div></body></html>")
+    assert looks_like_challenge(503, "<html><head><title>Just a moment...</title></head>" + FILLER + "</html>")
