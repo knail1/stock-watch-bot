@@ -5,6 +5,7 @@
     stockwatch check --url URL             dry check of one pasted product URL
     stockwatch doctor [--offline]          PASS/WARN/FAIL health table
     stockwatch test-alert                  fire a test alert through every channel
+    stockwatch simulate [watch_id]         fake a restock through the real alert pipeline
     stockwatch init                        create ~/StockWatch/config.yaml and .env
     stockwatch setup-profile               sign in to retailers in the bot's Chrome profile
     stockwatch install | uninstall         launchd agent
@@ -377,6 +378,81 @@ def cmd_test_alert(args: argparse.Namespace) -> int:
     return asyncio.run(_main())
 
 
+# ------------------------------------------------------------------ simulate
+
+def simulated_result(watch: WatchCfg, retailer: str, max_price: float | None) -> "StockResult":
+    """An in-stock StockResult that qualifies as critical for `watch` (first fulfillment channel)."""
+    from .models import ChannelAvail, StockResult
+
+    channel = watch.fulfillment[0] if watch.fulfillment else "store_pickup"
+    local = channel != "ship"
+    price = round(max_price - 50, 2) if max_price and max_price > 60 else 449.99
+    return StockResult(
+        retailer=retailer, in_stock=True, price=price, raw_status="IN_STOCK",
+        product_name=watch.name,
+        channels=[ChannelAvail(
+            channel=channel, available=True, low_stock=True,
+            store_id="SIM-1" if local else None,
+            store_name="Simulated Store" if local else None,
+            distance_miles=1.0 if local else None,
+        )],
+    )
+
+
+def cmd_simulate(args: argparse.Namespace) -> int:
+    """Push a fake restock through the real dedupe -> alert pipeline (in-memory DB, nothing persisted)."""
+    import dataclasses
+
+    from .db import Database
+    from .models import StockResult
+    from .service import StockWatchService
+
+    try:
+        store, config = _load(args)
+    except ConfigError as e:
+        _err(str(e))
+        return 2
+    watch = config.watch(args.watch_id) if args.watch_id else (config.watches[0] if config.watches else None)
+    if watch is None:
+        _err(f"no watch {args.watch_id!r}" if args.watch_id else "config has no watches")
+        return 2
+    targets = [t for t in watch.targets if not args.retailer or t.retailer == args.retailer]
+    if not targets:
+        _err(f"watch {watch.id} has no {args.retailer or ''} target".replace("  ", " "))
+        return 2
+    target = targets[0]
+    sim_watch = dataclasses.replace(watch, name=f"[TEST] {watch.name}", add_to_cart=bool(args.cart))
+
+    async def _main() -> int:
+        db = Database(":memory:")
+        async with _new_http() as http:
+            svc = StockWatchService(store, db, http=http, enable_dashboard=False, enable_telegram=False,
+                                    enable_health=False, enable_power=False)
+            try:
+                print(f"simulating restock: {watch.id} @ {target.retailer} "
+                      f"(cart attempt: {'YES, real browser' if args.cart else 'no'})")
+                await svc._on_result(target, sim_watch, StockResult(
+                    retailer=target.retailer, in_stock=False, raw_status="OUT_OF_STOCK"))
+                await svc._on_result(target, sim_watch, simulated_result(
+                    sim_watch, target.retailer, config.effective_max_price(watch)))
+                await svc.wait_background(timeout=config.browser.cart_timeout_seconds + 15)
+                await svc.notifier.mac_sound.wait()
+            finally:
+                if args.cart:
+                    await svc.browser.close()
+        rows = db.recent_alerts(20)
+        db.close()
+        if not rows:
+            print("No alert was sent: no notification channel is enabled, or the watch's settings "
+                  "made the simulated stock non-qualifying.")
+            return 1
+        for r in reversed(rows):
+            print(f"{'ok' if r['status'] == 'sent' else r['status']:<8} {r['channel']}")
+        return 0 if all(r["status"] == "sent" for r in rows) else 1
+
+    return asyncio.run(_main())
+
+
 # ------------------------------------------------------------------ init / setup-profile
 
 def cmd_init(args: argparse.Namespace) -> int:
@@ -531,6 +607,12 @@ def build_parser() -> argparse.ArgumentParser:
     d.set_defaults(func=cmd_doctor)
 
     sub.add_parser("test-alert", help="fire a test alert through every channel").set_defaults(func=cmd_test_alert)
+    sm = sub.add_parser("simulate", help="fake a restock to test the alert pipeline end to end (nothing saved)")
+    sm.add_argument("watch_id", nargs="?", help="watch id (default: first watch)")
+    sm.add_argument("--retailer", help="which target of the watch to simulate (default: first)")
+    sm.add_argument("--cart", action="store_true",
+                    help="also run the REAL add-to-cart in the Chrome profile (never checks out)")
+    sm.set_defaults(func=cmd_simulate)
     sub.add_parser("init", help="create ~/StockWatch/config.yaml and .env templates").set_defaults(func=cmd_init)
 
     s = sub.add_parser("setup-profile", help="open the bot's Chrome profile on each retailer's sign-in page")

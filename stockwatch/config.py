@@ -143,7 +143,7 @@ class TelegramCfg:
 class MacSoundCfg:
     enabled: bool = True
     file: str = "assets/alarm.aiff"
-    repeat: int = 5
+    repeat: int = 3
     speak: bool = True
 
 

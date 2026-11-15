@@ -34,7 +34,7 @@ notify:
   mac_sound:
     enabled: true
     file: "assets/alarm.aiff"      # relative to the repo, then ~/StockWatch; falls back to Sosumi
-    repeat: 5
+    repeat: 3
     speak: true                    # macOS `say` reads the store name and price
 
 retailers:

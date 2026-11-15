@@ -83,6 +83,31 @@ Or by hand: `uv venv && uv pip install -e '.[dev]'`, then `stockwatch init`.
 
 Then work through these steps.
 
+### 0. Try it on the Mac first (no phone needed)
+
+You can check the whole pipeline on the laptop before setting up any phone apps.
+
+1. In `~/StockWatch/config.yaml`, set `notify.pushover.enabled: false` and
+   `notify.telegram.enabled: false`. Keep `mac_sound.enabled: true`. Set `dashboard.bind`
+   to `["127.0.0.1"]`, which needs no PIN.
+2. Fake a restock:
+
+   ```bash
+   stockwatch simulate              # first watch; or: stockwatch simulate <watch_id> --retailer target
+   ```
+
+   This sends a made-up in-stock result through the real dedupe and alert code. You should
+   hear the siren and hear macOS read out "Simulated Store" and the price. It uses a
+   throwaway in-memory database, so nothing is saved. The alert title starts with
+   `[TEST]`. Add `--cart` to also run the **real** add-to-cart in the Chrome profile; it
+   never checks out.
+3. Check a real product without your phone. Set `home.zip`, then run
+   `stockwatch check --url "<Target product URL>"`. Target needs no API key.
+4. Run the service: `stockwatch run`. Open http://127.0.0.1:8787 and press Ctrl-C to stop.
+
+When it all works, turn Pushover and Telegram back on (steps 1 and 2), then add
+`"tailscale"` to `dashboard.bind` and set `DASHBOARD_PIN` (step 4).
+
 ### 1. Pushover (primary alarm)
 
 1. Install Pushover on the iPhone and create an account (free trial, then a one-time purchase).
@@ -161,6 +186,7 @@ stockwatch check <watch_id> --dry-run       print StockResult JSON per target; n
 stockwatch check --url <product url>        dry-check one pasted URL
 stockwatch doctor [--offline] [--no-browser] [--no-checks]
 stockwatch test-alert
+stockwatch simulate [watch_id] [--retailer r] [--cart]   fake a restock (Mac-only testing; nothing saved)
 stockwatch init                             create ~/StockWatch/config.yaml and .env if missing
 stockwatch setup-profile [retailer ...]
 stockwatch install | uninstall              launchd agent com.local.stockwatch

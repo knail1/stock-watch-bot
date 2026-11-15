@@ -242,3 +242,31 @@ def test_help_and_no_command(capsys) -> None:
         cli.main(["check", "--help"])
     assert e.value.code == 0
     assert "--dry-run" in capsys.readouterr().out
+
+
+@respx.mock
+def test_simulate_sends_critical_restock_without_persisting(home: Path, capsys) -> None:
+    write_config(home, telegram=True)
+    route = respx.post(url__regex=r"https://api\.telegram\.org/bot.*/sendMessage").mock(
+        return_value=httpx.Response(200, json={"ok": True, "result": {"message_id": 1}}))
+    assert cli.main(["simulate", "w1"]) == 0
+    assert route.call_count == 1  # one critical alert, no cart follow-up without --cart
+    text = json.loads(route.calls[0].request.content)["text"]
+    assert "IN STOCK: [TEST] Switch 2 @ Best Buy" in text
+    assert "Simulated Store" in text
+    out = capsys.readouterr().out
+    assert "ok       telegram" in out
+    assert not (home / "stockwatch.db").exists()
+
+
+def test_simulate_unknown_watch(home: Path, capsys) -> None:
+    write_config(home)
+    assert cli.main(["simulate", "nope"]) == 2
+
+
+def test_simulated_result_is_local_and_under_max_price() -> None:
+    from stockwatch.config import WatchCfg
+
+    r = cli.simulated_result(WatchCfg(id="w", name="n", fulfillment=["store_pickup", "ship"]), "target", 499.99)
+    assert r.in_stock and r.price == 449.99
+    assert r.channels[0].channel == "store_pickup" and r.channels[0].distance_miles == 1.0
