@@ -40,6 +40,9 @@ notify:
 retailers:
   bestbuy:
     api_key: ${BESTBUY_API_KEY}    # free key from https://developer.bestbuy.com
+    # Best Buy API ToS: 50,000 calls/day and 5/s per key; content kept at most 72h; no
+    # game/music/movie titles. See docs/policies/bestbuy-compliance.md. Each check = 2 calls.
+    daily_call_budget: 45000       # rolling 24h cap enforced locally (max 50000)
     # min_interval_seconds: 60     # can only be raised above the built-in floor
   target:
     # The public web key Target's own site uses is built in; override if it rotates.

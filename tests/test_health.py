@@ -155,7 +155,7 @@ def test_schedule_math(db, http) -> None:
 async def test_start_stop(db, http) -> None:
     mon = HealthMonitor(make_config(heartbeat_url=""), db, http)
     await mon.start()
-    assert len(mon._tasks) == 2
+    assert len(mon._tasks) == 3  # heartbeat, daily summary, hourly content retention
     await mon.stop()
     assert mon._tasks == []
 

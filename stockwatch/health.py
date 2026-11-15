@@ -55,6 +55,10 @@ def next_run_at(now: datetime, at: time) -> datetime:
     return candidate if candidate > now else candidate + timedelta(days=1)
 
 
+#: How often retailer content with a storage limit is purged (Best Buy: 72h max).
+CONTENT_PRUNE_INTERVAL_SECONDS = 3600
+
+
 class HealthMonitor:
     """Background heartbeat + daily summary/prune loops. Never raises from its loops."""
 
@@ -89,6 +93,7 @@ class HealthMonitor:
         self._tasks = [
             asyncio.create_task(self._heartbeat_loop(), name="health-heartbeat"),
             asyncio.create_task(self._daily_loop(), name="health-daily"),
+            asyncio.create_task(self._content_loop(), name="health-content-retention"),
         ]
 
     async def stop(self) -> None:
@@ -177,6 +182,23 @@ class HealthMonitor:
         if removed:
             log.info("pruned %d old check rows", removed)
         return removed
+
+    async def prune_content(self) -> dict[str, int]:
+        """Enforce retailer storage limits (Best Buy: 72h). Runs hourly and at startup."""
+        try:
+            res = await asyncio.to_thread(self.db.prune_restricted_content)
+        except Exception:
+            log.exception("pruning restricted retailer content failed")
+            return {"checks": 0, "events": 0}
+        if any(res.values()):
+            log.info("retailer content retention: deleted %d checks, scrubbed %d events",
+                     res["checks"], res["events"])
+        return res
+
+    async def _content_loop(self) -> None:
+        while True:
+            await self.prune_content()
+            await asyncio.sleep(CONTENT_PRUNE_INTERVAL_SECONDS)
 
     def seconds_until_summary(self, now: datetime | None = None) -> float:
         now = now or self.clock()

@@ -56,6 +56,11 @@ config.yaml ─► Scheduler ─► Retailer adapter ─► StockResult ─► S
 | GameStop | Product page in the Chrome profile | Your set store only | 120 s |
 | Nintendo Store | Product page in the Chrome profile | Online only; detects queue and invite-only sales | 120 s |
 
+**Best Buy API terms.** The Best Buy adapter enforces the API's terms itself: at most
+4 calls/s, a rolling daily budget under the 50,000/day limit, Best Buy content deleted
+within 72 h, game/music/movie titles refused, and Best Buy's logo and attribution on the
+dashboard. See [`policies/bestbuy-compliance.md`](policies/bestbuy-compliance.md).
+
 Every adapter separates *fetching* from *parsing*. Parsing is a pure function tested
 against saved fixtures in `tests/fixtures/<retailer>/`. If a page or API changes shape, the
 adapter raises an error and you get "<Retailer> adapter broken". It never quietly reports

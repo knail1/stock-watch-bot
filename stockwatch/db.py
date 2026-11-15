@@ -66,6 +66,13 @@ CREATE TABLE IF NOT EXISTS alerts (
 
 CHECK_RETENTION_DAYS = 14
 
+#: Retailers whose terms cap how long their content may be stored. Best Buy API ToS:
+#: "store or cache any Content except on a temporary basis not to exceed seventy-two (72) hours".
+#: We purge at 71h and run the purge hourly, so nothing outlives 72h.
+RESTRICTED_CONTENT_HOURS: dict[str, int] = {"bestbuy": 71}
+#: Event detail keys that hold retailer content (prices, store ids/names).
+CONTENT_DETAIL_KEYS = ("best_price", "first_price", "seen_locations", "primary")
+
 
 def _iso(dt: datetime | None) -> str | None:
     return dt.astimezone(timezone.utc).isoformat() if dt else None
@@ -174,6 +181,43 @@ class Database:
     def prune_checks(self, days: int = CHECK_RETENTION_DAYS) -> int:
         cutoff = _iso(utcnow() - timedelta(days=days))
         return self._exec("DELETE FROM checks WHERE checked_at < ?", (cutoff,)).rowcount
+
+    def prune_restricted_content(self, limits: dict[str, int] | None = None,
+                                 now: datetime | None = None) -> dict[str, int]:
+        """Delete/scrub content of retailers with storage limits (see RESTRICTED_CONTENT_HOURS).
+
+        Check rows older than the limit are deleted. Events keep their kind and timestamps
+        (needed for dedupe and the events log) but lose prices, store ids and cart messages.
+        Returns {"checks": n_deleted, "events": n_scrubbed}.
+        """
+        limits = RESTRICTED_CONTENT_HOURS if limits is None else limits
+        now = now or utcnow()
+        deleted = scrubbed = 0
+        with self._lock:
+            for retailer, hours in limits.items():
+                cutoff = _iso(now - timedelta(hours=hours))
+                deleted += self._exec(
+                    "DELETE FROM checks WHERE checked_at < ? AND target_id IN "
+                    "(SELECT id FROM targets WHERE retailer=?)", (cutoff, retailer)).rowcount
+                rows = self._all(
+                    "SELECT e.id, e.details_json FROM events e JOIN targets t ON t.id=e.target_id "
+                    "WHERE t.retailer=? AND e.started_at < ?", (retailer, cutoff))
+                for r in rows:
+                    details = json.loads(r["details_json"] or "{}")
+                    changed = False
+                    for k in CONTENT_DETAIL_KEYS:
+                        if k in details:
+                            del details[k]
+                            changed = True
+                    cart = details.get("cart")
+                    if isinstance(cart, dict) and cart.get("message"):
+                        cart["message"] = ""
+                        changed = True
+                    if changed:
+                        details["content_scrubbed"] = True
+                        self.update_event_details(r["id"], details)
+                        scrubbed += 1
+        return {"checks": deleted, "events": scrubbed}
 
     def check_stats_since(self, since: datetime) -> dict[str, int]:
         row = self._one(

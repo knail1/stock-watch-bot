@@ -159,18 +159,18 @@ async def test_check_out_of_stock_end_to_end() -> None:
 @pytest.mark.parametrize("status", [403, 429])
 @respx.mock
 async def test_check_blocked_status_no_retry(status: int) -> None:
-    stores = respx.get(STORES_URL).mock(return_value=httpx.Response(status, json={"errorCode": "403"}))
-    product = respx.get(PRODUCT_URL).mock(return_value=httpx.Response(200, json={}))
+    product = respx.get(PRODUCT_URL).mock(return_value=httpx.Response(status, json={"errorCode": "403"}))
+    stores = respx.get(STORES_URL).mock(return_value=httpx.Response(200, json={}))
     async with httpx.AsyncClient() as http:
         with pytest.raises(BlockedError) as ei:
             await adapter(http).check(tgt(), HOME)
-    assert stores.call_count == 1 and product.call_count == 0  # never retried, stopped early
+    assert product.call_count == 1 and stores.call_count == 0  # never retried, stopped early
     assert KEY not in str(ei.value)
 
 
 @respx.mock
 async def test_check_challenge_page_is_blocked() -> None:
-    respx.get(STORES_URL).mock(return_value=httpx.Response(
+    respx.get(PRODUCT_URL).mock(return_value=httpx.Response(
         200, text=load("challenge.html"), headers={"content-type": "text/html"}))
     async with httpx.AsyncClient() as http:
         with pytest.raises(BlockedError):
@@ -179,12 +179,12 @@ async def test_check_challenge_page_is_blocked() -> None:
 
 @respx.mock
 async def test_check_garbage_raises_parse_error() -> None:
-    respx.get(STORES_URL).mock(return_value=httpx.Response(200, text="<html>hello</html>"))
+    respx.get(PRODUCT_URL).mock(return_value=httpx.Response(200, text="<html>hello</html>"))
     async with httpx.AsyncClient() as http:
         with pytest.raises(ParseError):
             await adapter(http).check(tgt(), HOME)
-    respx.get(STORES_URL).mock(return_value=httpx.Response(200, json={"unexpected": True}))
     respx.get(PRODUCT_URL).mock(return_value=httpx.Response(200, json={"sku": 1}))
+    respx.get(STORES_URL).mock(return_value=httpx.Response(200, json={"unexpected": True}))
     async with httpx.AsyncClient() as http:
         with pytest.raises(ParseError):
             await adapter(http).check(tgt(), HOME)
@@ -192,12 +192,12 @@ async def test_check_garbage_raises_parse_error() -> None:
 
 @respx.mock
 async def test_check_timeout_and_404() -> None:
-    respx.get(STORES_URL).mock(side_effect=httpx.ConnectTimeout("boom"))
+    respx.get(PRODUCT_URL).mock(side_effect=httpx.ConnectTimeout("boom"))
     async with httpx.AsyncClient() as http:
         with pytest.raises(AdapterError) as ei:
             await adapter(http).check(tgt(), HOME)
     assert ei.value.kind == ErrorKind.TIMEOUT
-    respx.get(STORES_URL).mock(return_value=httpx.Response(404, json={"errorCode": "404"}))
+    respx.get(PRODUCT_URL).mock(return_value=httpx.Response(404, json={"errorCode": "404"}))
     async with httpx.AsyncClient() as http:
         with pytest.raises(AdapterError) as ei:
             await adapter(http).check(tgt(), HOME)

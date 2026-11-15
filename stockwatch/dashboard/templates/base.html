@@ -38,5 +38,11 @@
 {% if ok %}<p class="flash ok">{{ ok }}</p>{% endif %}
 {% block content %}{% endblock %}
 </main>
+{% if show_bestbuy %}
+<footer class="attrib">
+  <span>Best Buy stock and price data is provided by the Best Buy Developer API.</span>
+  <a href="https://developer.bestbuy.com" rel="noopener noreferrer" target="_blank"><img class="bb-logo" src="https://developer.bestbuy.com/images/bestbuy-logo.png" alt="Best Buy Developer API"></a>
+</footer>
+{% endif %}
 </body>
 </html>

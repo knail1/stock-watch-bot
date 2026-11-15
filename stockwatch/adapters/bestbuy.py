@@ -18,7 +18,9 @@ import asyncio
 import json
 import logging
 import re
-from typing import Any, ClassVar
+import time
+from collections import deque
+from typing import Any, Callable, ClassVar
 
 import httpx
 
@@ -41,7 +43,17 @@ from .base import (
 log = logging.getLogger(__name__)
 
 API_BASE = "https://api.bestbuy.com/v1"
-PRODUCT_FIELDS = "sku,name,salePrice,onlineAvailability,inStoreAvailability,orderable,url"
+PRODUCT_FIELDS = "sku,name,type,salePrice,onlineAvailability,inStoreAvailability,orderable,url"
+
+# ---- Best Buy API Terms of Service (docs/policies/bestbuy-api-terms.md) ----
+#: Published limits are 50,000 calls/day and 5 calls/second per key. We stay under both
+#: with headroom: a rolling 24h window (so no calendar day can exceed it either).
+DAILY_CALL_LIMIT = 50_000
+DEFAULT_DAILY_CALL_BUDGET = 45_000
+MAX_CALLS_PER_SECOND = 4
+#: "these Terms do not grant you any rights to Content specific to Games, CDs, DVDs, or
+#: Blu-ray titles" -> refuse to track those product types through the API.
+UNLICENSED_PRODUCT_TYPES = {"game", "music", "movie"}
 SITE_BASE = "https://www.bestbuy.com"
 CART_URL = f"{SITE_BASE}/cart"
 
@@ -98,6 +110,88 @@ def _install_log_redaction() -> None:
 _install_log_redaction()
 
 
+# ------------------------------------------------------------------ API rate limiting (ToS)
+
+class BudgetExceeded(BlockedError):
+    """The rolling 24h call budget is used up; treated like a block (backoff, one notice)."""
+
+
+class ApiRateLimiter:
+    """Client-side enforcement of Best Buy's per-key limits, shared by every Best Buy target.
+
+    * at most ``per_second`` request starts in any 1-second window (spaced evenly);
+    * at most ``daily_budget`` requests in any rolling 24h window; beyond that requests are
+      refused (``BudgetExceeded``) instead of being sent and earning 403s.
+    """
+
+    def __init__(self, daily_budget: int = DEFAULT_DAILY_CALL_BUDGET, per_second: int = MAX_CALLS_PER_SECOND,
+                 clock: Callable[[], float] = time.monotonic,
+                 sleep: Callable[[float], Any] = asyncio.sleep) -> None:
+        self.daily_budget = max(1, min(int(daily_budget), DAILY_CALL_LIMIT))
+        self.spacing = 1.0 / max(1, min(int(per_second), 5))
+        self._clock = clock
+        self._sleep = sleep
+        self._calls: deque[float] = deque()
+        self._last = float("-inf")
+        self._lock = asyncio.Lock()
+
+    def calls_last_24h(self) -> int:
+        self._expire(self._clock())
+        return len(self._calls)
+
+    def _expire(self, now: float) -> None:
+        while self._calls and now - self._calls[0] >= 86_400:
+            self._calls.popleft()
+
+    async def acquire(self) -> None:
+        async with self._lock:
+            now = self._clock()
+            self._expire(now)
+            if len(self._calls) >= self.daily_budget:
+                raise BudgetExceeded(
+                    f"Best Buy API daily budget reached ({self.daily_budget} calls in 24h; "
+                    f"Best Buy's limit is {DAILY_CALL_LIMIT}). Pausing until calls age out.")
+            wait = self._last + self.spacing - now
+            if wait > 0:
+                await self._sleep(wait)
+                now = self._clock()
+            self._last = now
+            self._calls.append(now)
+
+
+#: One limiter per process: the limits are per API key, not per target.
+_LIMITER: ApiRateLimiter | None = None
+
+
+def shared_limiter(daily_budget: int = DEFAULT_DAILY_CALL_BUDGET) -> ApiRateLimiter:
+    global _LIMITER
+    if _LIMITER is None:
+        _LIMITER = ApiRateLimiter(daily_budget)
+    else:
+        _LIMITER.daily_budget = max(1, min(int(daily_budget), DAILY_CALL_LIMIT))
+    return _LIMITER
+
+
+def estimated_daily_calls(interval_seconds: float, targets: int = 1) -> int:
+    """Two API calls per check (product, then stores) at the given average interval."""
+    return int(2 * targets * 86_400 / max(1.0, interval_seconds))
+
+
+def _error_message(body: str) -> str:
+    """Best Buy's own error text from a 4xx body (quota vs bad key), with any key removed."""
+    try:
+        data = json.loads(body)
+    except ValueError:
+        return ""
+    if isinstance(data, dict):
+        err = data.get("error") if isinstance(data.get("error"), dict) else data
+        for k in ("message", "errorMessage", "error"):
+            v = err.get(k) if isinstance(err, dict) else None
+            if isinstance(v, str) and v.strip():
+                return redact(v.strip())[:160]
+    return ""
+
+
 # ------------------------------------------------------------------ pure parsing
 
 def _as_bool(v: Any) -> bool | None:
@@ -150,6 +244,12 @@ def parse_stores(payload: Any, home: Home, target: Target) -> list[ChannelAvail]
         ))
     out.sort(key=lambda c: (c.distance_miles is None, c.distance_miles or 0.0))
     return out
+
+
+def unlicensed_type(payload: Any) -> str | None:
+    """The product's `type` if the API terms do not license its content (games, music, movies)."""
+    t = payload.get("type") if isinstance(payload, dict) else None
+    return t if isinstance(t, str) and t.strip().lower() in UNLICENSED_PRODUCT_TYPES else None
 
 
 def parse_product(payload: Any) -> tuple[str | None, float | None, bool]:
@@ -251,7 +351,13 @@ class BestBuyAdapter(BaseAdapter):
         return CART_URL
 
     # ---- stock check ----
+    @property
+    def limiter(self) -> ApiRateLimiter:
+        extra = self.settings.extra if self.settings else {}
+        return shared_limiter(int(extra.get("daily_call_budget") or DEFAULT_DAILY_CALL_BUDGET))
+
     async def _get_json(self, url: str, params: dict[str, str]) -> Any:
+        await self.limiter.acquire()  # ToS rate limits: 5/s and 50,000/day per key
         try:
             resp = await self.http.get(url, params=params, headers={"Accept": "application/json"})
         except httpx.TimeoutException as e:
@@ -260,6 +366,11 @@ class BestBuyAdapter(BaseAdapter):
             raise AdapterError(f"bestbuy API transport error ({type(e).__name__})",
                                kind=ErrorKind.HTTP_ERROR) from None
         body = resp.text
+        if resp.status_code in (403, 429):
+            # Best Buy answers both "over quota" and "bad key" with 403; say which when it tells us.
+            msg = _error_message(body)
+            raise BlockedError(f"bestbuy API refused (HTTP {resp.status_code})"
+                               + (f": {msg}" if msg else "; check the API key or rate limit"))
         if looks_like_challenge(resp.status_code, body if "json" not in resp.headers.get("content-type", "") else None):
             raise BlockedError(f"bestbuy API blocked (HTTP {resp.status_code})")
         raise_for_http(resp)
@@ -269,11 +380,13 @@ class BestBuyAdapter(BaseAdapter):
             raise ParseError(f"bestbuy API returned non-JSON (HTTP {resp.status_code})") from None
 
     async def fetch_payload(self, sku: str, zip_code: str, api_key: str) -> dict[str, Any]:
-        """Fetch both endpoints sequentially (stores first; stop early if blocked)."""
-        stores = await self._get_json(f"{API_BASE}/products/{sku}/stores.json",
-                                      {"postalCode": zip_code, "apiKey": api_key, "format": "json"})
+        """Fetch product then stores; skip the stores call for product types the ToS does not license."""
         product = await self._get_json(f"{API_BASE}/products/{sku}.json",
                                        {"show": PRODUCT_FIELDS, "apiKey": api_key, "format": "json"})
+        if unlicensed_type(product):
+            return {"product": product, "stores": None}
+        stores = await self._get_json(f"{API_BASE}/products/{sku}/stores.json",
+                                      {"postalCode": zip_code, "apiKey": api_key, "format": "json"})
         return {"product": product, "stores": stores}
 
     async def check(self, target: Target, home: Home) -> StockResult:
@@ -285,6 +398,12 @@ class BestBuyAdapter(BaseAdapter):
             return StockResult.failure(self.name, ErrorKind.CONFIG,
                                        "Best Buy API key missing (set BESTBUY_API_KEY)")
         payload = await self.fetch_payload(sku, home.zip, api_key)
+        kind = unlicensed_type(payload["product"])
+        if kind:
+            return StockResult.failure(
+                self.name, ErrorKind.CONFIG,
+                f"Best Buy API terms do not license {kind} titles (games, music, movies); "
+                "remove this SKU or track it at another retailer")
         return parse_bestbuy(payload, home, target)
 
     # ---- add to cart ----

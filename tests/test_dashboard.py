@@ -557,3 +557,37 @@ async def test_serve_localhost(control: FakeControl) -> None:
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
+
+
+# ------------------------------------------------------------------ Best Buy branding (API ToS)
+
+def test_bestbuy_logo_and_attribution_shown_when_bestbuy_used(control: FakeControl) -> None:
+    from types import SimpleNamespace
+
+    control.config = SimpleNamespace(watches=[SimpleNamespace(targets=[SimpleNamespace(retailer="bestbuy")])])
+    c = make_client(control)
+    login(c)
+    for path in ("/", "/events", "/settings"):
+        html = c.get(path).text
+        # Best Buy's own hosted asset, exactly as in their branding snippet
+        assert 'src="https://developer.bestbuy.com/images/bestbuy-logo.png"' in html, path
+        assert "Best Buy Developer API" in html
+        assert html.index("bb-logo") > html.index("</main>")  # at the bottom of the page
+    csp = c.get("/").headers["content-security-policy"]
+    assert "img-src 'self' data: https://developer.bestbuy.com;" in csp
+
+
+def test_bestbuy_logo_hidden_when_not_used(control: FakeControl) -> None:
+    from types import SimpleNamespace
+
+    control.config = SimpleNamespace(watches=[SimpleNamespace(targets=[SimpleNamespace(retailer="target")])])
+    c = make_client(control)
+    login(c)
+    assert "bestbuy-logo" not in c.get("/").text
+
+
+def test_dashboard_does_not_use_best_buy_blue_as_accent() -> None:
+    from pathlib import Path
+
+    css = (Path(__file__).parent.parent / "stockwatch/dashboard/static/style.css").read_text().lower()
+    assert "--accent:#2563eb" not in css and "--accent:#0046be" not in css

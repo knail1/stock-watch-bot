@@ -270,3 +270,19 @@ def test_simulated_result_is_local_and_under_max_price() -> None:
     r = cli.simulated_result(WatchCfg(id="w", name="n", fulfillment=["store_pickup", "ship"]), "target", 499.99)
     assert r.in_stock and r.price == 449.99
     assert r.channels[0].channel == "store_pickup" and r.channels[0].distance_miles == 1.0
+
+
+def test_doctor_bestbuy_budget_estimate(home: Path) -> None:
+    write_config(home)
+    _, rows, out = run_doctor("--offline")
+    assert rows["bestbuy api budget"].status == "PASS"
+    assert "~1,920 calls/day" in out  # 2 calls per check every 90s
+
+
+def test_doctor_bestbuy_budget_exceeded(home: Path) -> None:
+    path = write_config(home)
+    raw = yaml.safe_load(path.read_text())
+    raw["retailers"]["bestbuy"]["daily_call_budget"] = 1000
+    path.write_text(yaml.safe_dump(raw))
+    code, rows, _ = run_doctor("--offline")
+    assert rows["bestbuy api budget"].status == "FAIL" and code == 1

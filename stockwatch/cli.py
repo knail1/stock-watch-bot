@@ -243,6 +243,16 @@ async def run_doctor(store: ConfigStore, *, network: bool = True, browser: bool 
         rc = config.retailers.get("bestbuy")
         ok = bool(rc and rc.api_key)
         add(PASS if ok else FAIL, "bestbuy api key", "" if ok else "retailers.bestbuy.api_key not set")
+        from .adapters import bestbuy as bb
+
+        budget = int(((rc.extra if rc else {}) or {}).get("daily_call_budget") or bb.DEFAULT_DAILY_CALL_BUDGET)
+        budget = min(budget, bb.DAILY_CALL_LIMIT)
+        est = sum(bb.estimated_daily_calls(config.effective_interval(w, "bestbuy"))
+                  for w in config.watches if w.enabled for t in w.targets if t.retailer == "bestbuy")
+        add(PASS if est <= budget else FAIL, "bestbuy api budget",
+            f"~{est:,} calls/day estimated vs budget {budget:,} (Best Buy ToS limit "
+            f"{bb.DAILY_CALL_LIMIT:,}/day, 5/s)" + ("" if est <= budget else
+                                                    ": raise intervals or remove SKUs"))
     add(PASS if config.dashboard.pin else WARN, "dashboard pin",
         "" if config.dashboard.pin else "no PIN: dashboard listens on 127.0.0.1 only")
     add(PASS if config.health.heartbeat_url else WARN, "heartbeat",

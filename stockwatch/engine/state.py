@@ -299,6 +299,10 @@ class StateEngine:
         details = ev["details"]
         details["oos_streak"] = 0
         seen = set(details.get("seen_locations") or [])
+        if details.pop("content_scrubbed", False) and not seen:
+            # Retailer content was purged (Best Buy 72h storage limit): re-baseline the
+            # open event from this check instead of treating every store as new.
+            seen = set(keys)
         new_keys = [k for k in keys if k not in seen]
         best = details.get("best_price")
         lower = result.price is not None and best is not None and result.price < float(best) - _PRICE_EPS

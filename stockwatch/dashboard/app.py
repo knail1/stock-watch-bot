@@ -469,7 +469,7 @@ def create_app(control: DashboardControl, *, pin: str | None = None,
         h["X-Frame-Options"] = "DENY"
         h["X-Content-Type-Options"] = "nosniff"
         h["Referrer-Policy"] = "no-referrer"
-        h["Content-Security-Policy"] = ("default-src 'self'; img-src 'self' data:; style-src 'self'; "
+        h["Content-Security-Policy"] = ("default-src 'self'; img-src 'self' data: https://developer.bestbuy.com; style-src 'self'; "
                                         "script-src 'self'; form-action 'self'; frame-ancestors 'none'; "
                                         "base-uri 'none'")
         return resp
@@ -484,10 +484,19 @@ def create_app(control: DashboardControl, *, pin: str | None = None,
             raise HTTPException(403, "CSRF check failed. Reload the page and try again.")
         return form
 
+    def uses_bestbuy() -> bool:
+        """Best Buy API Branding Guidelines: show the logo wherever Best Buy API data can appear."""
+        cfg = getattr(control, "config", None)
+        watches = getattr(cfg, "watches", None)
+        if watches is None:
+            return True  # unknown -> attribute rather than risk omitting it
+        return any(t.retailer == "bestbuy" for w in watches for t in w.targets)
+
     def render(request: Request, name: str, ctx: dict[str, Any] | None = None, status: int = 200) -> HTMLResponse:
         sid = request.state.sid
         base = {"csrf": signer.csrf_token(sid) if sid else "", "path": request.url.path,
-                "ok": OK_MESSAGES.get(request.query_params.get("ok", ""))}
+                "ok": OK_MESSAGES.get(request.query_params.get("ok", "")),
+                "show_bestbuy": uses_bestbuy()}
         return templates.TemplateResponse(request, name, {**base, **(ctx or {})}, status_code=status)
 
     def back(url: str, ok: str) -> RedirectResponse:

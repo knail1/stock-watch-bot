@@ -12,7 +12,8 @@ online. When stock appears it:
 Everything runs locally. Nothing is exposed to the public internet. The full design is in
 [`docs/spec/stock-watch-bot-spec.md`](docs/spec/stock-watch-bot-spec.md); module interfaces are in
 [`docs/CONTRACTS.md`](docs/CONTRACTS.md). For a guided tour of how the app works, see
-[`docs/OVERVIEW.md`](docs/OVERVIEW.md).
+[`docs/OVERVIEW.md`](docs/OVERVIEW.md). Retailer policy compliance:
+[`docs/policies/`](docs/policies/).
 
 ## Project status (v1 implementation)
 
@@ -126,8 +127,25 @@ When it all works, turn Pushover and Telegram back on (steps 1 and 2), then add
 
 ### 3. Best Buy API key
 
-Create a free key at <https://developer.bestbuy.com> and set `BESTBUY_API_KEY`. Target uses the
-public key its own website uses (built in; override with `retailers.target.api_key` if it rotates).
+Create a free key at <https://developer.bestbuy.com> and set `BESTBUY_API_KEY`. When the form asks
+how you'll use the API, describe it honestly: a personal tool that checks store and online
+availability for a few SKUs near your ZIP and alerts you. Register with your own, accurate
+details; the terms require it.
+
+StockWatch follows the Best Buy API Terms of Service. See
+[`docs/policies/bestbuy-compliance.md`](docs/policies/bestbuy-compliance.md) for details and
+[`docs/policies/bestbuy-api-terms.md`](docs/policies/bestbuy-api-terms.md) for the full text:
+- at most 4 calls/s and 45,000 calls per rolling 24 h (`retailers.bestbuy.daily_call_budget`,
+  capped at Best Buy's 50,000). `stockwatch doctor` estimates your daily usage.
+- Best Buy data is deleted from the local database within 72 hours.
+- game, music and movie titles are refused (the API terms don't license them); consoles are fine.
+- the dashboard shows Best Buy's logo and attribution whenever a Best Buy target is configured.
+
+Add-to-cart on bestbuy.com is governed by Best Buy's website Terms and Conditions, not the API
+terms. Read them, or set `add_to_cart: false` on watches that include Best Buy.
+
+Target uses the public key its own website uses (built in; override with
+`retailers.target.api_key` if it rotates).
 
 ### 4. Tailscale (dashboard on the phone)
 
